@@ -4,8 +4,8 @@ import AppShell from "@/components/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Cloud Internal Developer Portal",
-  description: "ทุกระบบของ Cloud ใครเป็นเจ้าของ และอยู่ในขั้นตอนใดของการพัฒนา",
+  title: "Gargantua Internal Developer Portal",
+  description: "ทุกระบบของ Gargantua ใครเป็นเจ้าของ และอยู่ในขั้นตอนใดของการพัฒนา",
   // The sign-in card's black hole. public/favicon.svg is the source; the PNGs
   // and favicon.ico are exported from it for browsers that can't use SVG.
   icons: {

@@ -99,7 +99,7 @@ export default function ChecklistTab({ system, onProgress }: { system: SystemDet
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">
-        สิ่งที่แต่ละขั้นตอนต้องมีตามมาตรฐานของ Cloud รายการของขั้นตอนถัดไปแสดงไว้ด้วยเพื่อให้วางแผนล่วงหน้าได้
+        สิ่งที่แต่ละขั้นตอนต้องมีตามมาตรฐานของ Gargantua รายการของขั้นตอนถัดไปแสดงไว้ด้วยเพื่อให้วางแผนล่วงหน้าได้
         รายการเหล่านี้ไม่ได้ห้ามการย้ายระบบไปยังขั้นตอนอื่น
       </p>
       {meta.steps.map((step) => {

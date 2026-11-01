@@ -21,8 +21,8 @@ type Props = {
 // monospaced code font: every character is 1ch wide. The cursor types the first
 // line, then moves to the second and keeps blinking there.
 const TITLE_LINES = [
-  { text: "Cloud", className: "text-7xl font-semibold", seconds: 0.8, delay: 0.3 },
-  { text: "Developer Portal", className: "text-4xl", seconds: 1.8, delay: 1.3 },
+  { text: "Gargantua", className: "text-7xl font-semibold", seconds: 1.2, delay: 0.3 },
+  { text: "Developer Portal", className: "text-4xl", seconds: 1.8, delay: 1.7 },
 ];
 
 function TypedTitle() {
@@ -214,7 +214,7 @@ export default function SignIn({ config, onSignedIn, error }: Props) {
             {/* On small screens the right half is hidden, so the name shows here instead. */}
             <div className="flex items-center gap-2 font-semibold tracking-wide text-navy lg:hidden">
               <i className="pi pi-sitemap" aria-hidden />
-              Cloud Developer Portal
+              Gargantua Developer Portal
             </div>
 
             <div key={mode} className="auth-view mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-10">
@@ -279,7 +279,7 @@ export default function SignIn({ config, onSignedIn, error }: Props) {
             </div>
 
             <div className="text-xs text-slate-400">
-              <p>Cloud IT · สำหรับใช้งานภายในเท่านั้น</p>
+              <p>Gargantua IT · สำหรับใช้งานภายในเท่านั้น</p>
               {config?.support_email && (
                 <div className="mt-2 flex items-center gap-3">
                   <span>ติดต่อผู้ดูแลระบบ</span>
@@ -306,7 +306,7 @@ export default function SignIn({ config, onSignedIn, error }: Props) {
           <div className="metal-panel hidden flex-col justify-end px-12 pb-20 text-white lg:flex">
             {/* A small black hole turning in the empty top-right corner. */}
             <WarpPortal className="absolute right-8 top-10 w-64 xl:w-80" />
-            <h2 className="sr-only">Cloud Developer Portal</h2>
+            <h2 className="sr-only">Gargantua Developer Portal</h2>
             <div aria-hidden key={typeRun} className={`title-retype ${fading ? "title-fading" : ""}`}>
               <TypedTitle />
               <div className="typewriter-reflection">
