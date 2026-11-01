@@ -139,6 +139,8 @@ Elastic Beanstalk → **Create application**.
 | `SEED_ADMIN_EMAIL` | your email: the first admin |
 | `SEED_ADMIN_PASSWORD` | 12+ characters |
 
+> **In production:** these properties are stored in plain text, and anyone who can open the environment's configuration can read `DB_PASSWORD` and `JWT_SECRET_KEY`. That's acceptable in a lab account only you use. A real deployment keeps secrets in **AWS Secrets Manager** or an **SSM Parameter Store SecureString** (encrypted, hidden, versioned) and links them here through each row's **Source** dropdown, leaving only plain settings as text.
+
 **Step 6: Review → Submit.** The first launch takes about 10 minutes (it builds the image). When the environment shows **Ok**, open its URL (`cloud-dev-portal-env.eba-xxxx.us-east-1.elasticbeanstalk.com`) and sign in with the seed admin.
 
 Then add one more property so links in emails point to the portal: `PUBLIC_BASE_URL` = that URL, starting with `http://`.
