@@ -1,2 +1,4 @@
 -r requirements.txt
 pytest
+# A fake S3 for the doc_store tests.
+moto[s3]

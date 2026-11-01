@@ -3,6 +3,7 @@ import logging
 import os
 import secrets
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -28,7 +29,27 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 
 INSTANCE_DIR = Path(os.environ.get("INSTANCE_DIR", BACKEND_DIR / "instance"))
-DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{(INSTANCE_DIR / 'portal.db').as_posix()}"
+
+
+def _database_url() -> str:
+    """DATABASE_URL as given; else PostgreSQL (Aurora) from DB_HOST and friends; else SQLite.
+
+    The parts are separate so the password can be set on its own (a Beanstalk
+    environment property) without escaping it into a URL by hand.
+    """
+    if os.environ.get("DATABASE_URL"):
+        return os.environ["DATABASE_URL"]
+    host = os.environ.get("DB_HOST", "").strip()
+    if not host:
+        return f"sqlite:///{(INSTANCE_DIR / 'portal.db').as_posix()}"
+    user = quote(os.environ.get("DB_USER", "postgres").strip(), safe="")
+    password = quote(os.environ.get("DB_PASSWORD", ""), safe="")
+    port = os.environ.get("DB_PORT", "5432").strip()
+    name = os.environ.get("DB_NAME", "portal").strip()
+    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{name}"
+
+
+DATABASE_URL = _database_url()
 
 _secret = os.environ.get("JWT_SECRET_KEY", "")
 if not _secret:
@@ -84,3 +105,10 @@ KB_BASE_URL = os.environ.get("KB_BASE_URL", "").rstrip("/")
 
 # A relative path is taken from the backend folder, whatever the working directory.
 FRONTEND_DIR = BACKEND_DIR / os.environ.get("FRONTEND_DIR", "static_frontend")
+
+# Markdown files attached to the handover guide go to this S3 bucket (see doc_store.py).
+# Empty: they stay in the database, as on a developer's machine. Credentials come from
+# the usual AWS chain: the instance profile on EC2/Beanstalk, ~/.aws/credentials locally.
+DOCS_BUCKET = os.environ.get("DOCS_BUCKET", "").strip()
+DOCS_PREFIX = os.environ.get("DOCS_PREFIX", "").strip().strip("/")
+AWS_REGION = (os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1").strip()

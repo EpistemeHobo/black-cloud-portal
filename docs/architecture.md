@@ -24,7 +24,8 @@ flowchart LR
 | Web frontend | Next.js (static export), React, PrimeReact, Tailwind | Catalog, system pages, forms and checklists |
 | API / backend | Python 3.11, FastAPI, SQLAlchemy | Data, permissions, checklist rules, change history |
 | Database migrations | Alembic | Creates and changes tables on every deploy |
-| Database | SQLite (PostgreSQL possible through `DATABASE_URL`) | All portal data |
+| Database | SQLite locally; Aurora PostgreSQL on AWS (`DB_HOST` or `DATABASE_URL`) | All portal data except attached files |
+| File storage | S3 (`DOCS_BUCKET`), versioned; the database when unset | Markdown files attached to the handover guide |
 
 The data model is in [data-model.md](data-model.md).
 
@@ -35,6 +36,7 @@ The data model is in [data-model.md](data-model.md).
 | People: names, emails, units | `person`, `unit` tables | Personal (staff contact details) | Yes, nightly |
 | Systems and their details | `system` and related tables | Some fields confidential (see below) | Yes, nightly |
 | Checklist answers, review notes | `checklist_answer`, `review_note` tables | No | Yes, nightly |
+| Attached markdown files (runbooks) | S3 objects `systems/<id>/<question>/<file>`; the `guide_doc` row keeps key and checksum | May describe servers; bucket is private | S3 versioning keeps old copies |
 | Change history | `change_log` table | Contains names of who changed what | Yes, nightly |
 
 ## Login and permissions

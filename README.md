@@ -68,6 +68,8 @@ All settings are listed in `.env.example`.
 | `ENVIRONMENT` | `production` turns on safe defaults and requires the email settings | `production` |
 | `JWT_SECRET_KEY` | Signs session cookies; required in production | in the Kubernetes secret |
 | `DATABASE_URL` | Database address; SQLite by default | `sqlite:////app/instance/portal.db` |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Aurora PostgreSQL in parts, used when `DATABASE_URL` is empty | `portal.cluster-….us-east-1.rds.amazonaws.com` |
+| `DOCS_BUCKET`, `DOCS_PREFIX`, `AWS_REGION` | S3 bucket for the guide's markdown files; empty keeps them in the database | `t2gen-portal-docs` |
 | `ALLOWED_HOSTS` | Hostnames the app answers to | `devportal.t2gen.internal` |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | The first admin, created at start-up | `it.lead@example.org` |
 | `SUPPORT_EMAIL` | Contact on the sign-in page, by email and Webex; defaults to the seed admin | `it.lead@example.org` |
@@ -81,6 +83,7 @@ All settings are listed in `.env.example`.
 - [Premises](docs/premises.md)
 - [Project brief](docs/brief.md)
 - [Architecture](docs/architecture.md)
+- [Deploying to AWS Academy Learner Lab](docs/aws-learner-lab.md)
 - [Data model](docs/data-model.md)
 - [Decisions](docs/decisions/)
 - [Technical debt](docs/technical_debt.md)

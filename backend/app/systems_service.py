@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app import doc_store
 from app.checklist import evaluate
 from app.enums import (
     BUS_FACTOR_ROLES, EDITOR_ROLES, EMPTYABLE_QUESTIONS, GUIDE_QUESTIONS, LIFECYCLE_STATES,
@@ -167,7 +168,7 @@ def detail(db: Session, system: System, viewer: Person) -> dict:
             for w in system.watch_outs
         ],
         "docs": [
-            {"id": d.id, "question": d.question, "filename": d.filename, "content": d.content,
+            {"id": d.id, "question": d.question, "filename": d.filename, "content": doc_store.read(d),
              "updated_at": d.updated_at.isoformat() if d.updated_at else None,
              "updated_by": d.updated_by.name if d.updated_by else None}
             for d in system.docs

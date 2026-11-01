@@ -5,7 +5,7 @@ from alembic import context
 
 from app import config as app_config
 from app import models  # noqa: F401  -- registers the tables on Base.metadata
-from app.db import Base, make_engine
+from app.db import Base, make_engine, startup_lock
 
 config = context.config
 if config.config_file_name is not None:
@@ -34,12 +34,13 @@ def run_migrations_online() -> None:
             # the old system table would cascade-delete every row that points at it.
             connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
             connection.commit()
-        context.configure(
-            connection=connection, target_metadata=target_metadata,
-            render_as_batch=RENDER_AS_BATCH,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+        with startup_lock(connection):
+            context.configure(
+                connection=connection, target_metadata=target_metadata,
+                render_as_batch=RENDER_AS_BATCH,
+            )
+            with context.begin_transaction():
+                context.run_migrations()
 
 
 if context.is_offline_mode():

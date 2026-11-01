@@ -4,6 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app import doc_store
 from app import systems_service as svc
 from app import transfer
 from app.auth import current_person
@@ -263,11 +264,10 @@ def upload_doc(system_id: str, body: DocIn, db: Session = Depends(get_db),
     svc.require_editor(person, system)
     doc = next((d for d in system.docs if d.question == body.question and d.filename == body.filename), None)
     if doc is None:
-        system.docs.append(GuideDoc(question=body.question, filename=body.filename,
-                                    content=body.content, updated_by=person))
-    else:
-        doc.content = body.content
-        doc.updated_by = person
+        doc = GuideDoc(question=body.question, filename=body.filename)
+        system.docs.append(doc)
+    doc_store.save(system, doc, body.content)
+    doc.updated_by = person
     svc.clear_nothing(system, body.question)
     db.commit()
     return svc.detail(db, svc.get_system(db, system_id), person)

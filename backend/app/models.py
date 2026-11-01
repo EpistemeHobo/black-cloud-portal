@@ -264,7 +264,10 @@ class GuideDoc(Base):
     system_id: Mapped[str] = mapped_column(ForeignKey("system.id", ondelete="CASCADE"))
     question: Mapped[str] = mapped_column(String(20))
     filename: Mapped[str] = mapped_column(String(200))
-    content: Mapped[str] = mapped_column(Text)
+    # The text, unless it is in S3 under s3_key (doc_store.py); read it with doc_store.read().
+    content: Mapped[Optional[str]] = mapped_column(Text)
+    s3_key: Mapped[Optional[str]] = mapped_column(String(500))
+    checksum: Mapped[str] = mapped_column(String(64))  # SHA-256 of the text
     updated_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

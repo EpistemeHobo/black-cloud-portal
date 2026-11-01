@@ -83,6 +83,9 @@ Guide question 4. `system_id`, `kind` (Trap · Chore), `text`, `how_often` (chor
 ### Open item
 Guide question 7. `system_id`, `kind` (Unfinished work · Promise · Open decision), `text`, `promised_to` (promises only), `due_date` (optional), `done_at`, `done_by_id`. `roadmap_notes` is moved into unfinished work once, then dropped.
 
+### Guide doc
+A markdown file attached to one guide question, such as a runbook. `system_id`, `question`, `filename` (unique together), `checksum` (SHA-256 of the text), `updated_by_id`, `updated_at`. The text is in S3 at `s3_key` when `DOCS_BUCKET` is set, otherwise in `content` (decision 0005). Code reads it through `doc_store.read()`, never the column.
+
 ### Standards version and checklist item
 `StandardsVersion`: `version`, `status` (Draft · Current · Retired), `published_at`.
 

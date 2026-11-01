@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app import config, history  # noqa: F401
 from app.auth import seed_admin
-from app.db import SessionLocal
+from app.db import SessionLocal, engine, startup_lock
 from app.models import (
     ChecklistItem, Dependency, Link, OpenItem, Person, StandardsVersion, System, SystemRole, Unit, WatchOut,
 )
@@ -148,7 +148,7 @@ def seed_demo(db: Session, version: StandardsVersion) -> None:
 
 
 def main(argv: list[str]) -> None:
-    with SessionLocal() as db:
+    with engine.connect() as lock_conn, startup_lock(lock_conn), SessionLocal() as db:
         version = seed_standards(db)
         print(f"Standards {version.version}: {len(version.items)} checklist items.")
         if "--demo" in argv:

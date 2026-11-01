@@ -6,3 +6,6 @@ alembic
 pyjwt[crypto]
 httpx
 python-dotenv
+# Aurora PostgreSQL (DB_HOST / DATABASE_URL) and S3 for the guide's markdown files.
+psycopg[binary]
+boto3

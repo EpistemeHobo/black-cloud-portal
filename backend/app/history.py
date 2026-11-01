@@ -116,7 +116,7 @@ def _record_changes(session: Session, _flush_context, _instances) -> None:
                         + [(o, "replaced") for o in session.dirty]):
         if not isinstance(obj, GuideDoc):
             continue
-        if action == "replaced" and not inspect(obj).attrs.content.history.has_changes():
+        if action == "replaced" and not inspect(obj).attrs.checksum.history.has_changes():
             continue
         _log(session, system_id=_system_id(obj), entity="guide_doc", entity_id=obj.question, field=action,
              old_value=obj.filename if action == "removed" else None,

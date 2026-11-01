@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import doc_store
 from app import systems_service as svc
 from app.enums import GUIDE_QUESTIONS, ROLES
 from app.fields import FIELDS, GUIDE_FIELDS
@@ -106,7 +107,7 @@ def export_zip(system: System) -> tuple[str, bytes]:
         z.writestr(f"{root}/README.md", README.format(
             name=system.name, id=system.id, date=date.today().isoformat(), dirs=dirs))
         for doc in system.docs:
-            z.writestr(f"{root}/docs/{QUESTION_DIRS[doc.question]}/{doc.filename}", doc.content)
+            z.writestr(f"{root}/docs/{QUESTION_DIRS[doc.question]}/{doc.filename}", doc_store.read(doc))
     return f"{root}.zip", buffer.getvalue()
 
 
@@ -278,7 +279,8 @@ def import_system(db: Session, body: ImportIn, importer: Person) -> System:
         if key in names:
             raise HTTPException(status_code=422, detail=f"มีไฟล์ {doc.filename} ซ้ำในคำถามเดียวกัน")
         names.add(key)
-        system.docs.append(GuideDoc(question=doc.question, filename=doc.filename, content=doc.content,
-                                    updated_by_id=importer.id))
+        row = GuideDoc(question=doc.question, filename=doc.filename, updated_by_id=importer.id)
+        system.docs.append(row)
+        doc_store.save(system, row, doc.content)
     db.commit()
     return system
