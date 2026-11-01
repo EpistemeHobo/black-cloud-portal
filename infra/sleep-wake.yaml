@@ -14,6 +14,13 @@ Parameters:
   EnvironmentCname:
     Type: String
     Description: The Beanstalk environment's domain, e.g. cloud-dev-portal.us-east-1.elasticbeanstalk.com
+  CodeBucket:
+    Type: String
+    Description: The S3 bucket you uploaded portal_mode.zip to, e.g. your docs bucket
+  CodeKey:
+    Type: String
+    Default: deploy/portal_mode.zip
+    Description: Where in that bucket. Upload a changed function under a new name (deploy/portal_mode-2.zip) and update the stack with it
   OriginVerifySecret:
     Type: String
     NoEcho: true
@@ -52,7 +59,9 @@ Resources:
       Description: Switches the portal between active and hibernate, wakes it on a visit, sleeps it when idle
       Runtime: python3.12
       Handler: handler.lambda_handler
-      Code: portal_mode/   # uploaded by `aws cloudformation package`
+      Code:                # infra/portal_mode.zip, uploaded to S3 beforehand
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref CodeKey
       # Learner Lab can't create roles; LabRole is the one every lab account has.
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
       Timeout: 30

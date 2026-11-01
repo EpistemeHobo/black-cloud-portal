@@ -294,7 +294,7 @@ flowchart LR
 The same four pieces can be built two ways. Both give the same result; pick one.
 
 - **[Option A: by hand in the console](#option-a-set-it-up-by-hand-in-the-console)**: about an hour. You create each piece yourself and see what it does and how they connect. Best for learning.
-- **[Option B: with CloudFormation](#option-b-set-it-up-with-cloudformation)**: about 15 minutes. One template ([infra/sleep-wake.yaml](../infra/sleep-wake.yaml)) creates all of it and deletes it again in one step. Infrastructure as code.
+- **[Option B: with CloudFormation](#option-b-set-it-up-with-cloudformation)**: about 15 minutes, also all in the web console. One template ([infra/sleep-wake.yaml](../infra/sleep-wake.yaml)) creates all of it and deletes it again in one step. Infrastructure as code.
 
 Before either: the Beanstalk environment works (step 6), and you have its **name** from its page, e.g. `cloud-dev-portal-env`. The steps below write it as `<environment name>`.
 
@@ -428,30 +428,47 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ### Option B: set it up with CloudFormation
 
+A **template** ([infra/sleep-wake.yaml](../infra/sleep-wake.yaml)) describes every piece of Option A as code. CloudFormation reads it and creates them all as one **stack**, `cloud-dev-portal-modes`, which it can later update or delete in one step. It doesn't touch the stacks already listed there: `awseb-…` is the one Beanstalk made for your environment, the other is Learner Lab's own; leave both alone.
 
-1. Put the lab's credentials in `~/.aws/credentials` (see [Using the AWS CLI](#using-the-aws-cli-from-your-computer)).
-2. Have the environment's name and domain at hand (see [Two ways to set it up](#two-ways-to-set-it-up)), and create the secret parameter `/cloud-dev-portal/origin-verify-secret` as in A4 step 1.
-3. From the project folder, upload the function's code (to your docs bucket, under `deploy/`) and create the stack:
+All in the web console:
 
-```bash
-aws cloudformation package --template-file infra/sleep-wake.yaml --s3-bucket <your docs bucket> --s3-prefix deploy --output-template-file infra/packaged.yaml
-```
+1. **Upload the function's code.** S3 → your docs bucket → **Create folder** `deploy` → open it → **Upload** [infra/portal_mode.zip](../infra/portal_mode.zip). It's now at `deploy/portal_mode.zip`.
+2. **Create the secret** `/cloud-dev-portal/origin-verify-secret` as in A4 step 1.
+3. **Create the stack.** CloudFormation → **Create stack** → **With new resources (standard)** → *Choose an existing template* → **Upload a template file** → choose `infra/sleep-wake.yaml` → **Next**.
+4. Stack name: **`cloud-dev-portal-modes`**. Parameters:
 
-```bash
-aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud-dev-portal-modes --parameter-overrides EnvironmentName=<environment name> EnvironmentCname=<environment domain> OriginVerifySecret=$(aws ssm get-parameter --name /cloud-dev-portal/origin-verify-secret --with-decryption --query Parameter.Value --output text)
-```
+| Parameter | Value |
+| --- | --- |
+| `CodeBucket` | your docs bucket's name |
+| `CodeKey` | `deploy/portal_mode.zip` (the default) |
+| `EnvironmentName` | `<environment name>` |
+| `EnvironmentCname` | `<environment domain>` (without `http://`) |
+| `OriginVerifySecret` | the secret from step 2 (copy it from Parameter Store → the parameter → **Show decrypted value**). The template marks it *NoEcho*, so CloudFormation never shows it again |
+| `NightlyStopSchedule` | `cron(0 17 * * ? *)`, midnight in Thailand; for another time zone, midnight in UTC terms |
+| `DbClusterId`, `IdleMinutes`, `InitialMode` | leave the defaults |
 
-   The midnight shutdown defaults to midnight in Thailand; for another time zone add `NightlyStopSchedule="cron(0 15 * * ? *)"` (the time in UTC) to the overrides.
-
-   It takes a minute or two. Then CloudFormation → `cloud-dev-portal-modes` → **Outputs** shows `PortalUrl`, the portal's HTTPS address, and `LauncherUrl`, the link to share.
-4. Lock the app to the HTTPS address as in A5 step 1, with `PortalUrl` as `PUBLIC_BASE_URL`.
-5. Lambda → `cloud-dev-portal-mode` → **Test** tab: save three test events:
+5. **Next** → Tags: `Project = cloud-dev-portal`, `Environment = dev` (CloudFormation copies them to everything it creates). Permissions: leave the IAM role empty → **Next** → **Submit**.
+6. Watch the **Events** tab: each resource appears as it's created. After a minute or two the stack shows **CREATE_COMPLETE**. **Outputs** shows `PortalUrl`, the portal's HTTPS address, and `LauncherUrl`, the link to share. The **Resources** tab lists all 16 pieces with links to each.
+7. Lock the app to the HTTPS address as in A5 step 1, with `PortalUrl` as `PUBLIC_BASE_URL`.
+8. Lambda → `cloud-dev-portal-mode` → **Test** tab: save three test events:
 
 | Event name | Event JSON |
 | --- | --- |
 | `active` | `{"mode": "active"}` |
 | `hibernate` | `{"mode": "hibernate"}` |
 | `wake` | `{"action": "wake"}` |
+
+**Changing it later.** Edit the template, then the stack → **Update** → **Replace current template** → upload it. CloudFormation shows what it will change, and changes only that. For a new version of the function, upload the zip under a new name (e.g. `deploy/portal_mode-2.zip`) and update the stack with that `CodeKey`: with the same name, CloudFormation sees no change.
+
+**From the terminal** instead, the same in two commands:
+
+```bash
+aws s3 cp infra/portal_mode.zip s3://<your docs bucket>/deploy/portal_mode.zip
+```
+
+```bash
+aws cloudformation deploy --template-file infra/sleep-wake.yaml --stack-name cloud-dev-portal-modes --parameter-overrides CodeBucket=<your docs bucket> EnvironmentName=<environment name> EnvironmentCname=<environment domain> OriginVerifySecret=$(aws ssm get-parameter --name /cloud-dev-portal/origin-verify-secret --with-decryption --query Parameter.Value --output text)
+```
 
 ### Switching
 
