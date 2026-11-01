@@ -30,7 +30,7 @@ Give every resource the same tags, so they can be listed together (Resource Grou
 | `Name` | the resource's own name, e.g. `portal-db-sg` (security groups show it in the Name column) |
 | `Environment` | `dev` |
 
-Beanstalk copies its tags to the EC2 instance and the other resources it creates.
+Beanstalk copies its tags to the EC2 instance and the other resources it creates. Leave out `Name` there: Beanstalk reserves it and sets it to the environment's name ("Tag key 'Name' is reserved").
 
 ## 1. Security groups
 
