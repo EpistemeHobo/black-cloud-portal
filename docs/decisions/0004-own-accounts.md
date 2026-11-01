@@ -4,7 +4,7 @@
 
 ## Context
 
-v1 signed people in through Keycloak SSO (`sso.genomicsthailand.com`, realm `geth`), reused from Cohort Builder. That realm belongs to a research project whose members are mostly researchers, not T2Gen staff, so it is the wrong directory for an internal portal. The portal has about 50 users.
+v1 signed people in through Keycloak SSO (`sso.genomicsthailand.com`, realm `geth`), reused from Cohort Builder. That realm belongs to a research project whose members are mostly researchers, not Cloud staff, so it is the wrong directory for an internal portal. The portal has about 50 users.
 
 ## Decision
 

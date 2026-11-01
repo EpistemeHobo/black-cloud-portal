@@ -1,7 +1,7 @@
-# Data model: T2Gen Internal Developer Portal
+# Data model: Cloud Internal Developer Portal
 
 *Version 0.3 · Last updated: 2026-10-29*
-*Sources: the App & System Inventory form (`app_inventory_form.gs`) and `T2GEN-STANDARDS.md` (7 development steps, standards A1 to G2)*
+*Sources: the App & System Inventory form (`app_inventory_form.gs`) and `CLOUD-STANDARDS.md` (7 development steps, standards A1 to G2)*
 
 ## Design rules
 
@@ -89,7 +89,7 @@ A markdown file attached to one guide question, such as a runbook. `system_id`, 
 ### Standards version and checklist item
 `StandardsVersion`: `version`, `status` (Draft · Current · Retired), `published_at`.
 
-`ChecklistItem`: `code` (such as `C2`, the same as `T2GEN-STANDARDS.md`), `category`, `title`, `from_step`, `level` (Required · Recommended), `applies_to_types` (empty means all), `how_to_verify`, `kb_url`, `auto_rule`.
+`ChecklistItem`: `code` (such as `C2`, the same as `CLOUD-STANDARDS.md`), `category`, `title`, `from_step`, `level` (Required · Recommended), `applies_to_types` (empty means all), `how_to_verify`, `kb_url`, `auto_rule`.
 
 ### Checklist answer
 One per system per item: `status` (Done · Partly done · Missing · Not applicable), `evidence` (text or link), `updated_by_id`, `updated_at`.

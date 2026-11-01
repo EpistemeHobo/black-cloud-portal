@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "note": "Matches T2GEN-STANDARDS.md (in Thai). kb_path is relative to KB_BASE_URL. Items without applies_to_types apply to every system type.",
+  "note": "Matches CLOUD-STANDARDS.md (in Thai). kb_path is relative to KB_BASE_URL. Items without applies_to_types apply to every system type.",
   "items": [
     {
       "code": "A1",
@@ -17,7 +17,7 @@
       "from_step": 1,
       "level": "required",
       "title": "เก็บโค้ดไว้ใน Git repository กลางขององค์กร",
-      "how_to_verify": "มีลิงก์ที่เก็บซอร์สโค้ดไปยังกลุ่ม GitLab ของ T2Gen",
+      "how_to_verify": "มีลิงก์ที่เก็บซอร์สโค้ดไปยังกลุ่ม GitLab ของ Cloud",
       "kb_path": "standards/source-control/",
       "auto_rule": "has_source_repo",
       "applies_to_types": [

@@ -1,5 +1,5 @@
 {
-  "name": "T2Gen Developer Portal",
+  "name": "Cloud Developer Portal",
   "short_name": "Dev Portal",
   "icons": [
     { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },

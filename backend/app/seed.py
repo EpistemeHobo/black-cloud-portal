@@ -89,7 +89,7 @@ def seed_demo(db: Session, version: StandardsVersion) -> None:
         n = give_demo_systems_to(db, owner)
         print(f"Systems already exist; demo data not added. {n} demo systems now owned by {owner.email}.")
         return
-    unit = Unit(name="ฝ่ายไอที T2Gen (ตัวอย่าง)")
+    unit = Unit(name="ฝ่ายไอที Cloud (ตัวอย่าง)")
     db.add(unit)
     people = [
         Person(email="dev.one@example.org", name="Demo Developer One", unit=unit),
@@ -107,7 +107,7 @@ def seed_demo(db: Session, version: StandardsVersion) -> None:
         return s
 
     sso = system("APP-001", "Keycloak SSO (demo)", "Platform", 6,
-                 description="ระบบเข้าสู่ระบบครั้งเดียว (SSO) สำหรับเว็บแอปของ T2Gen",
+                 description="ระบบเข้าสู่ระบบครั้งเดียว (SSO) สำหรับเว็บแอปของ Cloud",
                  if_down="ไม่มีใครเข้าเว็บแอปภายในได้เลย ทุกทีมรู้ภายในไม่กี่นาที", criticality="Critical")
     minio = system("APP-002", "MinIO object storage (demo)", "Infrastructure", 6,
                    description="ที่เก็บไฟล์และชุดข้อมูลแบบ S3", criticality="High")
@@ -120,7 +120,7 @@ def seed_demo(db: Session, version: StandardsVersion) -> None:
                     tech_stack="Python (FastAPI), Next.js, SQLite", hosting=["On-prem Kubernetes"],
                     criticality="High", data_types=["Genomic", "Health or patient"])
     portal = system("APP-004", "Internal Developer Portal (demo)", "Web app", 3,
-                    description="รวบรวมทุกระบบของ T2Gen และแนะนำนักพัฒนาในแต่ละขั้นตอน",
+                    description="รวบรวมทุกระบบของ Cloud และแนะนำนักพัฒนาในแต่ละขั้นตอน",
                     if_down="ไม่มีงานใดหยุด แต่คนที่รับช่วงระบบต่อจะหาคู่มือไม่เจอ",
                     tech_stack="Python (FastAPI), Next.js, SQLite")
     db.flush()
@@ -131,8 +131,8 @@ def seed_demo(db: Session, version: StandardsVersion) -> None:
             s.roles.append(SystemRole(person_id=backup.id, role="backup_owner"))
     cohort.roles.append(SystemRole(person_id=lead.id, role="business_owner"))
     cohort.links.append(Link(kind="production_url", url="https://cohort.example.org/"))
-    cohort.links.append(Link(kind="source_repo", url="https://gitlab.example.org/t2gen/cohort-builder"))
-    portal.links.append(Link(kind="source_repo", url="https://gitlab.example.org/t2gen/developer-portal"))
+    cohort.links.append(Link(kind="source_repo", url="https://gitlab.example.org/cloud/cohort-builder"))
+    portal.links.append(Link(kind="source_repo", url="https://gitlab.example.org/cloud/developer-portal"))
     for s in (cohort, portal):
         s.dependencies.append(Dependency(to_system_id=sso.id, note="เข้าสู่ระบบ"))
     cohort.dependencies.append(Dependency(to_system_id=minio.id, note="ชุดข้อมูลที่อัปโหลด"))

@@ -7,7 +7,7 @@ from app import mailer
 from app.auth import RESET, VERIFY, make_link_token
 from app.models import Person
 
-PORTAL = "T2Gen Developer Portal"
+PORTAL = "Cloud Developer Portal"
 
 
 def _send(tasks: BackgroundTasks, kind: str, to: str, subject: str, lines: list[str],

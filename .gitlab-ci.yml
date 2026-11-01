@@ -1,6 +1,6 @@
 # Test on every push; build and deploy from main. Production deploy needs a manual click.
 # CI/CD variables to set (Settings > CI/CD > Variables, masked):
-#   IMAGE_REPO      e.g. registry.example.org/t2gen/developer-portal (a PRIVATE repository)
+#   IMAGE_REPO      e.g. registry.example.org/cloud/developer-portal (a PRIVATE repository)
 #   REGISTRY_USER, REGISTRY_TOKEN, REGISTRY_HOST   credentials for IMAGE_REPO
 #   CACHE_REPO      kaniko layer cache repository (optional)
 stages:

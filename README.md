@@ -1,6 +1,6 @@
-# T2Gen Internal Developer Portal
+# Cloud Internal Developer Portal
 
-Lists every T2Gen system, who owns it and where it stands in development, so leaders and peers can understand and review any project without a meeting.
+Lists every Cloud system, who owns it and where it stands in development, so leaders and peers can understand and review any project without a meeting.
 
 **Owner:** <name> · **Backup person:** <name> · **Production URL:** not live yet
 
@@ -10,7 +10,7 @@ You need:
 
 - Python 3.11 or newer
 - Node.js 24
-- Access to the T2Gen GitLab group
+- Access to the Cloud GitLab group
 
 ```bash
 git clone <repository-url>
@@ -69,14 +69,14 @@ All settings are listed in `.env.example`.
 | `JWT_SECRET_KEY` | Signs session cookies; required in production | in the Kubernetes secret |
 | `DATABASE_URL` | Database address; SQLite by default | `sqlite:////app/instance/portal.db` |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Aurora PostgreSQL in parts, used when `DATABASE_URL` is empty | `portal.cluster-….us-east-1.rds.amazonaws.com` |
-| `DOCS_BUCKET`, `DOCS_PREFIX`, `AWS_REGION` | S3 bucket for the guide's markdown files; empty keeps them in the database | `t2gen-portal-docs` |
-| `ALLOWED_HOSTS` | Hostnames the app answers to | `devportal.t2gen.internal` |
+| `DOCS_BUCKET`, `DOCS_PREFIX`, `AWS_REGION` | S3 bucket for the guide's markdown files; empty keeps them in the database | `cloud-dev-portal-docs` |
+| `ALLOWED_HOSTS` | Hostnames the app answers to | `devportal.cloud.internal` |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | The first admin, created at start-up | `it.lead@example.org` |
 | `SUPPORT_EMAIL` | Contact on the sign-in page, by email and Webex; defaults to the seed admin | `it.lead@example.org` |
 | `SMTP_*`, `MAIL_FROM` | Email for sign-up verification and password reset (Resend works) | see `.env.example` |
-| `PUBLIC_BASE_URL` | The portal's address, for links in emails | `https://devportal.t2gen.internal` |
+| `PUBLIC_BASE_URL` | The portal's address, for links in emails | `https://devportal.cloud.internal` |
 | `ALLOWED_EMAIL_DOMAINS` | Only these domains may sign up; empty allows any | `nstda.or.th` |
-| `KB_BASE_URL` | Knowledge base address for checklist links | `https://kb.t2gen.internal` |
+| `KB_BASE_URL` | Knowledge base address for checklist links | `https://kb.cloud.internal` |
 
 ## More documentation
 

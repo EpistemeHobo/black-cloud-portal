@@ -1,4 +1,4 @@
-# Architecture: T2Gen Internal Developer Portal
+# Architecture: Cloud Internal Developer Portal
 
 *Last updated: 2026-10-29*
 

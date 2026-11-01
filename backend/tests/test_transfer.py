@@ -59,7 +59,7 @@ def test_export_is_a_folder_with_json_and_markdown(owner):
     root = f"{sid}-cohort-builder"
     assert set(files) == {f"{root}/system.json", f"{root}/README.md", f"{root}/docs/3-how/runbook.md"}
     data = json.loads(files[f"{root}/system.json"])
-    assert data["format"] == "t2gen-dev-portal/system" and data["system"]["name"] == "Cohort Builder"
+    assert data["format"] == "cloud-dev-portal/system" and data["system"]["name"] == "Cohort Builder"
     assert data["catalog"]["server_or_location"] == "vm-7"
     assert "content" not in json.dumps(data["guide"])  # file contents stay in the .md files
 
@@ -97,8 +97,8 @@ def test_import_registers_a_new_system_with_everything(owner):
 def test_import_rejects_other_files(owner):
     assert owner.post("/api/systems/import", json={"data": {"format": "something", "version": 1,
                       "system": {"name": "X", "type": "Script"}}}).status_code == 422
-    bad_type = {"format": "t2gen-dev-portal/system", "version": 1, "system": {"name": "X", "type": "Robot"}}
+    bad_type = {"format": "cloud-dev-portal/system", "version": 1, "system": {"name": "X", "type": "Robot"}}
     assert owner.post("/api/systems/import", json={"data": bad_type}).status_code == 422
-    newer = {"format": "t2gen-dev-portal/system", "version": 99, "system": {"name": "X", "type": "Script"}}
+    newer = {"format": "cloud-dev-portal/system", "version": 99, "system": {"name": "X", "type": "Script"}}
     assert owner.post("/api/systems/import", json={"data": newer}).status_code == 422
     assert owner.get("/api/systems").json() == []

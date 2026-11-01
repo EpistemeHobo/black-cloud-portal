@@ -1,4 +1,4 @@
-# T2Gen Internal Developer Portal: one container serving the API and the static frontend.
+# Cloud Internal Developer Portal: one container serving the API and the static frontend.
 
 # --- Stage 1: the Next.js static export ---------------------------------------
 FROM node:24-slim AS frontend

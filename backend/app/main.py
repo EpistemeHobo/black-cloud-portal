@@ -25,7 +25,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
-    title="T2Gen Internal Developer Portal",
+    title="Cloud Internal Developer Portal",
     # The API is for the portal's own frontend; no public API docs in production.
     docs_url=None if config.IS_PRODUCTION else "/api/docs",
     redoc_url=None,

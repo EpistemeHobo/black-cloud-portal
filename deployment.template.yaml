@@ -1,4 +1,4 @@
-# T2Gen Internal Developer Portal on Kubernetes. Applied by the pipeline, which
+# Cloud Internal Developer Portal on Kubernetes. Applied by the pipeline, which
 # replaces the word in capitals on the image lines with the built image.
 # The deployer fills in every <...> before the first deploy.
 #
@@ -20,7 +20,7 @@ metadata:
   namespace: developer-portal
 data:
   ENVIRONMENT: "production"
-  ALLOWED_HOSTS: "<internal hostname, e.g. devportal.t2gen.internal>"
+  ALLOWED_HOSTS: "<internal hostname, e.g. devportal.cloud.internal>"
   COOKIE_SECURE: "true"
   KB_BASE_URL: "<knowledge base address>"
   # The first admin; the password is SEED_ADMIN_PASSWORD in the secret.
@@ -33,7 +33,7 @@ data:
   SMTP_HOST: "smtp.resend.com"
   SMTP_PORT: "587"
   SMTP_USERNAME: "resend"
-  MAIL_FROM: "T2Gen Developer Portal <noreply@<domain verified in Resend>>"
+  MAIL_FROM: "Cloud Developer Portal <noreply@<domain verified in Resend>>"
   # For the links in emails.
   PUBLIC_BASE_URL: "https://<internal hostname>"
 

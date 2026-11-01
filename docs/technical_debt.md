@@ -1,4 +1,4 @@
-# Technical debt: T2Gen Internal Developer Portal
+# Technical debt: Cloud Internal Developer Portal
 
 Shortcuts we took on purpose and plan to fix. Add an entry in the same merge request
 as the shortcut, and open a GitLab issue with the label `technical-debt`.

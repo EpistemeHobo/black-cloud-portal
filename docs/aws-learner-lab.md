@@ -20,6 +20,18 @@ flowchart LR
 
 Start the lab, wait for the dot to turn green, then click **AWS** to open the console. Check the region in the top-right corner says N. Virginia.
 
+## Tags
+
+Give every resource the same tags, so they can be listed together (Resource Groups & Tag Editor → filter on `Project`). Keys and values are case-sensitive.
+
+| Key | Value |
+| --- | --- |
+| `Project` | `cloud-dev-portal` |
+| `Name` | the resource's own name, e.g. `portal-db-sg` (security groups show it in the Name column) |
+| `Environment` | `dev` |
+
+Beanstalk copies its tags to the EC2 instance and the other resources it creates.
+
 ## 1. Security groups
 
 EC2 → **Security Groups** → **Create security group**, both in the default VPC:
@@ -35,7 +47,7 @@ Create `portal-app-sg` first: the rule on `portal-db-sg` points to it.
 
 S3 → **Create bucket**:
 
-- **Bucket name:** something unique, e.g. `t2gen-portal-docs-<your-student-id>`
+- **Bucket name:** something unique, e.g. `cloud-dev-portal-docs-<your-student-id>`
 - **Block all public access:** on (the default)
 - **Bucket Versioning:** **Enable**. Every replaced or removed file stays recoverable.
 - **Default encryption:** SSE-S3 (the default)
@@ -82,7 +94,7 @@ Elastic Beanstalk → **Create application**.
 **Step 1: Configure environment**
 
 - Environment tier: **Web server environment**
-- Application name: `t2gen-portal`
+- Application name: `cloud-dev-portal`
 - Platform: **Docker**, branch "Docker running on 64bit Amazon Linux 2023"
 - Application code: **Upload your code**, version label `v1`, choose `portal.zip`
 - Presets: **Single instance** (cheapest; no load balancer). Choose "High availability" later to show auto scaling.
@@ -122,7 +134,7 @@ Elastic Beanstalk → **Create application**.
 | `SEED_ADMIN_EMAIL` | your email: the first admin |
 | `SEED_ADMIN_PASSWORD` | 12+ characters |
 
-**Step 6: Review → Submit.** The first launch takes about 10 minutes (it builds the image). When the environment shows **Ok**, open its URL (`t2gen-portal-env.eba-xxxx.us-east-1.elasticbeanstalk.com`) and sign in with the seed admin.
+**Step 6: Review → Submit.** The first launch takes about 10 minutes (it builds the image). When the environment shows **Ok**, open its URL (`cloud-dev-portal-env.eba-xxxx.us-east-1.elasticbeanstalk.com`) and sign in with the seed admin.
 
 Then add one more property so links in emails point to the portal: `PUBLIC_BASE_URL` = that URL, starting with `http://`.
 

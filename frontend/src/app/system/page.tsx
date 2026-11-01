@@ -29,7 +29,7 @@ function SystemPage() {
     api<SystemDetail>(`/api/systems/${encodeURIComponent(id)}`)
       .then((s) => {
         setSystem(s);
-        document.title = `${s.name} · T2Gen Developer Portal`;
+        document.title = `${s.name} · Cloud Developer Portal`;
       })
       .catch((e: ApiError) => setError(e.status === 404 ? `ไม่พบระบบ ${id}` : e.message));
   }, [id]);
@@ -95,7 +95,7 @@ function SystemPage() {
         <TabPanel header="ขั้นตอนและรายการตรวจสอบ">
           <div className="space-y-4">
             <p className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-              <span>ไม่บังคับ: ใช้เป็นแนวทางเมื่อสร้างระบบใหม่ตามมาตรฐาน T2Gen</span>
+              <span>ไม่บังคับ: ใช้เป็นแนวทางเมื่อสร้างระบบใหม่ตามมาตรฐาน Cloud</span>
               <Progress summary={system.checklist} />
             </p>
             <StepTracker system={system} onChange={setSystem} />

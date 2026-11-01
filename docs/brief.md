@@ -1,10 +1,10 @@
-# Project brief: T2Gen Internal Developer Portal
+# Project brief: Cloud Internal Developer Portal
 
 *Owner: <name> · Backup person: <name> · Date: 2026-10-29 · Status: Draft*
 
 ## Problem
 
-T2Gen has no single place that lists its apps and systems, who owns them, and how far each one is in its development. Information lives in people's heads, scattered documents and a Google Form inventory. A leader or peer who wants to understand a project has to ask someone to explain it, usually in a meeting. Developers also have to read and remember the whole SOP to know which documents each development step needs.
+Cloud has no single place that lists its apps and systems, who owns them, and how far each one is in its development. Information lives in people's heads, scattered documents and a Google Form inventory. A leader or peer who wants to understand a project has to ask someone to explain it, usually in a meeting. Developers also have to read and remember the whole SOP to know which documents each development step needs.
 
 ## Users
 

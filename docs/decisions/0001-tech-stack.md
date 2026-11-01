@@ -4,7 +4,7 @@
 
 ## Context
 
-The portal lists every T2Gen system and guides developers through the development steps. About 50 users, small amounts of data, login through SSO, internal network only. T2Gen has no fixed tech stack; each project chooses one and writes down why.
+The portal lists every Cloud system and guides developers through the development steps. About 50 users, small amounts of data, login through SSO, internal network only. Cloud has no fixed tech stack; each project chooses one and writes down why.
 
 ## Decision
 

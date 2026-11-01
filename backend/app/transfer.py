@@ -25,7 +25,7 @@ from app.models import (
 )
 from app.schemas import DocIn, LinkIn, OpenItemIn, WatchOutIn, _email
 
-FORMAT = "t2gen-dev-portal/system"
+FORMAT = "cloud-dev-portal/system"
 VERSION = 1
 # Folder per guide question, numbered in reading order: docs/3-how/runbook.md
 QUESTION_DIRS = {q["key"]: f"{i}-{q['key']}" for i, q in enumerate(GUIDE_QUESTIONS, start=1)}
@@ -82,7 +82,7 @@ def export_data(system: System) -> dict:
 
 README = """# {name} ({id})
 
-Exported from the T2Gen Developer Portal on {date}.
+Exported from the Cloud Developer Portal on {date}.
 
 - `system.json`: the system's data (handover guide, catalog info, people, links,
   dependencies, watch-outs, open items, checklist answers).
@@ -169,7 +169,7 @@ class SystemFile(BaseModel):
     @classmethod
     def _format(cls, v: str) -> str:
         if v != FORMAT:
-            raise ValueError("system.json นี้ไม่ได้มาจาก T2Gen Developer Portal")
+            raise ValueError("system.json นี้ไม่ได้มาจาก Cloud Developer Portal")
         return v
 
     @field_validator("version")

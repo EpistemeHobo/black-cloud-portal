@@ -27,7 +27,7 @@ Only folders that hold files are written. A browser can only download one file, 
 
 | Key | Holds |
 |---|---|
-| `format`, `version` | Always `t2gen-dev-portal/system` and `1`. Import refuses other formats and newer versions |
+| `format`, `version` | Always `cloud-dev-portal/system` and `1`. Import refuses other formats and newer versions |
 | `exported_at`, `exported_from` | When, and the original system ID (for reference only) |
 | `system` | `name`, `type`, `lifecycle_state`, `step` |
 | `owning_unit` | Unit name, or `null` |
