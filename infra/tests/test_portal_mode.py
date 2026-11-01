@@ -124,3 +124,14 @@ def test_cloudfront_paths(monkeypatch):
 
     aws.db, aws.idle = "available", 5
     assert json.loads(handler.lambda_handler(http("GET", "/_wake/status"), None)["body"])["ready"] is True
+
+
+def test_the_committed_zip_matches_the_code():
+    """infra/portal_mode.zip is what the manual setup uploads: rebuild it
+    (python scripts/build_lambda_zip.py) whenever the function changes."""
+    import zipfile
+    root = Path(__file__).resolve().parent.parent
+    with zipfile.ZipFile(root / "portal_mode.zip") as z:
+        assert sorted(z.namelist()) == ["handler.py", "wake.html"]
+        for name in z.namelist():
+            assert z.read(name) == (root / "portal_mode" / name).read_bytes().replace(b"\r\n", b"\n"), name
