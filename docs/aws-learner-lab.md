@@ -15,7 +15,7 @@ flowchart LR
 
 - Work in **us-east-1** (N. Virginia). Other regions are blocked.
 - You can't create IAM roles. Wherever AWS asks for a role, pick **LabRole**; for EC2 it's **LabInstanceProfile**.
-- A session lasts 4 hours. When it ends, EC2 instances stop and start again with the next session. Aurora and S3 keep running and keep costing money.
+- A session lasts 4 hours. When it ends, EC2 instances stop and start again with the next session. Aurora and S3 keep running and keep costing money: stop Aurora yourself after each work session (see [Saving budget](#saving-budget)).
 - Watch the budget shown on the lab page. Aurora costs the most; see [Saving budget](#saving-budget).
 
 Start the lab, wait for the dot to turn green, then click **AWS** to open the console. Check the region in the top-right corner says N. Virginia.
@@ -61,13 +61,14 @@ RDS → **Create database**:
 | Setting | Value |
 | --- | --- |
 | Creation method | Standard create |
-| Engine | **Aurora (PostgreSQL Compatible)**, latest 16.x |
+| Engine | **Aurora (PostgreSQL Compatible)**, latest version offered |
 | Template | Dev/Test |
 | DB cluster identifier | `portal-db` |
 | Master username | `portal` |
 | Credentials management | **Self managed**, type a password (letters and digits are easiest) and write it down |
 | Cluster storage configuration | Aurora Standard |
-| Instance configuration | **Serverless v2**, minimum **0** ACU, maximum **2** ACU (pauses itself when idle). If the lab refuses Serverless, use `db.t3.medium` |
+| Cluster scalability type | **Provisioned**. Learner Lab refuses Aurora Serverless: creation fails with "not authorized to perform rds:CreateDBInstance … explicit deny" |
+| DB instance class | Burstable classes → **db.t3.medium** (or db.t4g.medium), the smallest Aurora PostgreSQL offers. It runs, and bills about $2 a day, until you stop it |
 | Multi-AZ | Don't create an Aurora Replica |
 | VPC | Default VPC |
 | Public access | **No** |
@@ -76,6 +77,10 @@ RDS → **Create database**:
 | Additional configuration → **Initial database name** | **`portal`**. Without it there is no database for the app to use |
 | Backup retention | 1 day |
 | Deletion protection | Off (so you can delete it at the end of the course) |
+
+Don't use **Easy create / express configuration**: it uses IAM-only database login (the app signs in with a password) and puts the database outside the VPC, and neither can be changed later.
+
+If a failed attempt left a `portal-db` cluster with no instance, delete it before trying again.
 
 Creating the cluster takes 5 to 10 minutes. Then open `portal-db` → **Connectivity & security** and copy the **writer** endpoint (`portal-db.cluster-xxxx.us-east-1.rds.amazonaws.com`). It becomes `DB_HOST`.
 
@@ -162,8 +167,11 @@ Beanstalk → your environment → **Upload and deploy** → choose `portal.zip`
 
 ## Saving budget
 
-- **Aurora Serverless v2 with 0 minimum ACU** pauses after a few idle minutes and costs only storage while paused. The first request after a pause waits about 15 seconds while it wakes.
-- A provisioned instance (`db.t3.medium`) bills every hour, even between lab sessions: stop it with RDS → `portal-db` → **Actions → Stop temporarily**. AWS starts it again after 7 days.
+- **Stop Aurora after every work session.** `db.t3.medium` bills about $0.08 an hour whenever it runs, even with the lab session off: left on, it alone uses up a $50 budget in under a month.
+  - Finishing: RDS → Databases → select the cluster `portal-db` → **Actions → Stop temporarily**. Stopped, it costs only storage.
+  - Starting: **Actions → Start**, and wait about 5 minutes for **Available** before opening the portal (until then it shows database errors).
+  - AWS starts a stopped cluster again by itself after 7 days: stop it again if you haven't worked on the project for a week.
+  - Some courses stop RDS when the lab session ends; check the lab's Readme, and don't rely on it otherwise.
 - Single-instance Beanstalk avoids paying for a load balancer.
 - Never create a NAT Gateway: it bills by the hour and isn't needed here.
 - At the end of the course: terminate the Beanstalk environment, delete the Aurora cluster (skip the final snapshot), empty and delete the bucket.
@@ -184,6 +192,8 @@ To run the portal locally against the real bucket, set `DOCS_BUCKET` in `backend
 | `AccessDenied` from S3 | Instance profile isn't LabInstanceProfile, or `DOCS_BUCKET` is misspelled |
 | First deploy fails during `npm run build` | Not enough memory: use t3.medium |
 | Aurora creation fails mentioning a monitoring role | Enhanced Monitoring is on: turn it off |
+| Aurora creation fails: `not authorized to perform rds:CreateDBInstance` … `explicit deny` | Serverless (or a large instance class) chosen: use Provisioned, db.t3.medium |
+| Portal shows database errors at the start of a session | Aurora is stopped: start it and wait for Available |
 | Everything stopped after the lab timed out | Normal: start the lab again and EC2 comes back in a few minutes |
 
 Where to read logs: Beanstalk → **Logs → Request logs → Full logs**. The app's output is under `var/log/eb-docker/containers/eb-current-app/`.
