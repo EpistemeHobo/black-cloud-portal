@@ -34,6 +34,7 @@ To work on the frontend with live reload, run `npm run dev` in `frontend/` with 
 ## Run the tests
 
 ```bash
+python -m pytest infra   # the AWS sleep/wake function
 cd backend
 python -m pytest
 python -m alembic check

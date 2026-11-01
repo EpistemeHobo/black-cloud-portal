@@ -193,3 +193,12 @@ def test_nextjs_prefetch_files_are_found(tmp_path):
     client = TestClient(site)
     assert client.get("/system/__next.system.__PAGE__.txt").text == "page"
     assert client.get("/system/missing.txt").status_code == 404
+
+
+def test_health_reports_idle_time_but_does_not_count_itself(monkeypatch):
+    from app.routers import meta
+    client = TestClient(app)
+    monkeypatch.setattr(meta, "last_activity", meta.time.monotonic() - 3600)
+    assert client.get("/api/health").json() == {"status": "ok", "idle_seconds": 3600}
+    client.get("/api/meta")  # any other request is someone using the portal
+    assert client.get("/api/health").json()["idle_seconds"] == 0

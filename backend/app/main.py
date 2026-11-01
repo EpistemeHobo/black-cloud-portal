@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -39,6 +40,15 @@ if config.ALLOWED_ORIGINS:
         CORSMiddleware, allow_origins=config.ALLOWED_ORIGINS, allow_credentials=True,
         allow_methods=["*"], allow_headers=["*"],
     )
+
+
+@app.middleware("http")
+async def track_activity(request: Request, call_next):
+    # The health check doesn't count as someone using the portal; everything else
+    # does. The sleep job (infra/portal_mode) reads this through /api/health.
+    if request.url.path != "/api/health":
+        meta.last_activity = time.monotonic()
+    return await call_next(request)
 
 
 @app.middleware("http")

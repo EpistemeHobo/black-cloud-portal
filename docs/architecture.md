@@ -6,7 +6,22 @@
 
 A web app with a Python (FastAPI) backend and a Next.js frontend, packaged as one Docker container. The backend serves both the API and the static frontend. Data is in SQLite on a Kubernetes volume. Users sign in with the portal's own email-and-password accounts; email goes out through SMTP (Resend).
 
-## Diagram
+## On AWS (class project)
+
+Beanstalk runs the container; data is in Aurora PostgreSQL and attached files in S3 (decision 0005). CloudFront is the public address; in hibernate mode a Lambda function puts Aurora and the instance to sleep when idle and wakes them when someone visits (decision 0006). Setup: [aws-learner-lab.md](aws-learner-lab.md).
+
+```mermaid
+flowchart LR
+    User[Browser] --> CF[CloudFront]
+    CF --> EB[Elastic Beanstalk: portal container]
+    CF -->|asleep| Fn[API Gateway + Lambda: wake and sleep]
+    EB --> Aurora[(Aurora PostgreSQL)]
+    EB --> S3[(S3: guide files)]
+    Fn --> Aurora
+    Fn --> EB
+```
+
+## Diagram (original on-premises design)
 
 ```mermaid
 flowchart LR

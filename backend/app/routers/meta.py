@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -16,10 +18,14 @@ from app.systems_service import current_standards
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
+# When someone last used the portal (main.py's track_activity); start-up counts.
+last_activity = time.monotonic()
+
 
 @router.get("/health")
 def health():
-    return {"status": "ok"}
+    # idle_seconds lets the sleep job put an unused portal to sleep (docs/aws-learner-lab.md).
+    return {"status": "ok", "idle_seconds": int(time.monotonic() - last_activity)}
 
 
 @router.get("/meta")

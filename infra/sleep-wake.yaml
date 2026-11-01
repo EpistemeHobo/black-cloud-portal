@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Cloud Developer Portal: active and hibernate modes. CloudFront in front of the
+  Beanstalk app shows a "waking up" page while it sleeps; one Lambda function
+  switches modes, wakes the portal on a visit and puts it to sleep when idle.
+  Deploy steps: docs/aws-learner-lab.md, "Active and hibernate modes".
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: The Beanstalk environment's name, e.g. Cloud-dev-portal-env
+  EnvironmentCname:
+    Type: String
+    Description: The Beanstalk environment's domain, e.g. cloud-dev-portal-env.eba-abcd1234.us-east-1.elasticbeanstalk.com
+  DbClusterId:
+    Type: String
+    Default: portal-db
+  IdleMinutes:
+    Type: Number
+    Default: 30
+    Description: In hibernate mode, sleep after this many minutes without visitors
+  InitialMode:
+    Type: String
+    Default: hibernate
+    AllowedValues: [active, hibernate]
+
+Resources:
+  # The current mode. The function overwrites it when you switch.
+  ModeParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /cloud-dev-portal/mode
+      Type: String
+      Value: !Ref InitialMode
+      Tags: {Project: cloud-dev-portal, Environment: dev}
+
+  ModeFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: cloud-dev-portal-mode
+      Description: Switches the portal between active and hibernate, wakes it on a visit, sleeps it when idle
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      Code: portal_mode/   # uploaded by `aws cloudformation package`
+      # Learner Lab can't create roles; LabRole is the one every lab account has.
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          DB_CLUSTER_ID: !Ref DbClusterId
+          EB_ENVIRONMENT: !Ref EnvironmentName
+          PARAM_PREFIX: /cloud-dev-portal
+          IDLE_MINUTES: !Ref IdleMinutes
+      Tags:
+        - {Key: Project, Value: cloud-dev-portal}
+        - {Key: Environment, Value: dev}
+
+  # Every 15 minutes: in hibernate mode, put an idle portal to sleep.
+  TickRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: cloud-dev-portal-tick
+      ScheduleExpression: rate(15 minutes)
+      Targets:
+        - Id: mode-function
+          Arn: !GetAtt ModeFunction.Arn
+          Input: '{"action": "tick"}'
+  TickPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ModeFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt TickRule.Arn
+
+  # The waking-up page and its /_wake calls. CloudFront is the only caller in
+  # practice; the throttle keeps anyone from running the function up.
+  WakeApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: cloud-dev-portal-wake
+      ProtocolType: HTTP
+      Tags: {Project: cloud-dev-portal, Environment: dev}
+  WakeIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WakeApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ModeFunction.Arn
+      PayloadFormatVersion: "2.0"
+  WakeRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WakeApi
+      RouteKey: $default
+      Target: !Sub integrations/${WakeIntegration}
+  WakeStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WakeApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 5
+        ThrottlingBurstLimit: 10
+  WakePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ModeFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WakeApi}/*
+
+  # Pages go to the app, or to the waking-up page when the app doesn't answer.
+  # CloudFront fails over only for GET/HEAD/OPTIONS, and rejects other methods on
+  # a behavior with an origin group, so /api/* (which posts) goes to the app directly.
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: Cloud Developer Portal
+        Enabled: true
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: app
+            DomainName: !Ref EnvironmentCname
+            # Asleep, the app doesn't answer at all: give up after 3 seconds, not 30.
+            ConnectionAttempts: 1
+            ConnectionTimeout: 3
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+          - Id: wake
+            DomainName: !Sub ${WakeApi}.execute-api.${AWS::Region}.amazonaws.com
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        OriginGroups:
+          Quantity: 1
+          Items:
+            - Id: app-or-wake
+              FailoverCriteria:
+                StatusCodes: {Quantity: 4, Items: [500, 502, 503, 504]}
+              Members:
+                Quantity: 2
+                Items: [{OriginId: app}, {OriginId: wake}]
+        DefaultCacheBehavior:
+          TargetOriginId: app-or-wake
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # Managed-CachingDisabled
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # Managed-AllViewerExceptHostHeader
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: app
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+          - PathPattern: /_wake/*
+            TargetOriginId: wake
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachedMethods: [GET, HEAD]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+      Tags:
+        - {Key: Project, Value: cloud-dev-portal}
+        - {Key: Environment, Value: dev}
+
+Outputs:
+  PortalUrl:
+    Description: Open the portal here (HTTPS); set it as PUBLIC_BASE_URL in Beanstalk
+    Value: !Sub https://${Distribution.DomainName}
+  ModeFunctionName:
+    Value: !Ref ModeFunction

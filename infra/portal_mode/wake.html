@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Waking up · Cloud Developer Portal</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
+    background: radial-gradient(circle at 1px 1px, #ffffff14 1px, transparent 0) 0 0 / 22px 22px, #0b0d12;
+    color: #e5e7eb; font-family: ui-sans-serif, system-ui, "Noto Sans Thai", sans-serif;
+  }
+  main {
+    width: 100%; max-width: 440px; padding: 32px; border-radius: 16px;
+    background: linear-gradient(180deg, #1c1f26, #111318); border: 1px solid #2a2e37;
+  }
+  h1 { margin: 0 0 4px; font: 600 28px/1.2 ui-monospace, "Cascadia Code", monospace; }
+  p { margin: 0 0 20px; color: #9ca3af; line-height: 1.5; }
+  ol { list-style: none; margin: 0 0 20px; padding: 0; }
+  li { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid #23262e; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #4b5563; flex: none; }
+  .busy .dot { background: #f59e0b; animation: pulse 1.2s infinite; }
+  .done .dot { background: #22c55e; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  small { color: #6b7280; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cloud<br>Developer Portal</h1>
+  <p>พอร์ทัลพักเครื่องอยู่เพื่อประหยัดค่าใช้จ่าย กำลังปลุกให้ ใช้เวลาประมาณ 5–10 นาที หน้านี้จะเปิดพอร์ทัลให้เองเมื่อพร้อม<br>
+     <small>The portal was asleep to save cost. It is waking up (about 5–10 minutes); this page opens it when ready.</small></p>
+  <ol>
+    <li id="database"><span class="dot"></span>ฐานข้อมูล (Aurora)</li>
+    <li id="app"><span class="dot"></span>เซิร์ฟเวอร์ (Elastic Beanstalk)</li>
+  </ol>
+  <small id="elapsed"></small>
+</main>
+<script>
+  // Asks the wake function to start anything still asleep, every 10 seconds
+  // (asking again is harmless), until both parts are up; then opens the portal.
+  // Ready on the very first check means the portal was awake and this page itself
+  // failed: say so instead of reloading into the same error forever.
+  const started = Date.now();
+  let sawAsleep = false;
+  function show(id, state) { document.getElementById(id).className = state; }
+  async function poll() {
+    try {
+      const s = await (await fetch("/_wake/start", { method: "POST" })).json();
+      show("database", s.database === "available" ? "done" : "busy");
+      show("app", s.app_answers ? "done" : "busy");
+      if (s.ready && sawAsleep) { location.reload(); return; }
+      if (s.ready) {
+        document.querySelector("p").innerHTML =
+          'พอร์ทัลทำงานอยู่ แต่หน้านี้เกิดข้อผิดพลาด <a href="/" style="color:#93c5fd">ไปหน้าแรก</a><br>' +
+          '<small>The portal is up, but this page failed. <a href="/" style="color:#93c5fd">Open the home page</a>.</small>';
+        return;
+      }
+      sawAsleep = true;
+    } catch (e) { /* try again next time */ }
+    const minutes = Math.floor((Date.now() - started) / 60000);
+    document.getElementById("elapsed").textContent = `ผ่านไป ${minutes} นาที · ${minutes} min elapsed`;
+    setTimeout(poll, 10000);
+  }
+  poll();
+</script>
+</body>
+</html>
