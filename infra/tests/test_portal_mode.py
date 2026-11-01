@@ -111,6 +111,16 @@ def test_switching_modes(monkeypatch):
         handler.lambda_handler({"mode": "asleep"}, None)
 
 
+
+def test_the_midnight_rule_stops_an_active_portal_in_use(monkeypatch):
+    # The nightly rule sends the hibernate switch: mode changes and everything
+    # stops at once, even in active mode with someone using the portal.
+    aws = FakeAws(db="available", instances=1, idle=60,
+                  params={"/cloud-dev-portal/mode": "active"}).install(monkeypatch)
+    handler.lambda_handler({"mode": "hibernate"}, None)
+    assert aws.params["/cloud-dev-portal/mode"] == "hibernate"
+    assert aws.calls == ["scale_0", "stop_db"]
+
 def http(method, path):
     return {"requestContext": {"http": {"method": method}}, "rawPath": path}
 

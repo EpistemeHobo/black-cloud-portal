@@ -184,7 +184,7 @@ Two modes, switched with one click:
 | | **Active** (presentation days) | **Hibernate** (development days) |
 | --- | --- | --- |
 | Aurora and the Beanstalk instance | Always on | Asleep when nobody uses the portal |
-| Goes to sleep | Never | After 30 minutes without visitors (checked every 15 minutes) |
+| Goes to sleep | When you switch to hibernate, or at midnight at the latest (then it's in hibernate) | After 30 minutes without visitors (checked every 15 minutes), and at midnight |
 | Opening the site | Instant | Through the **launcher link**: while asleep it shows a "waking up" page, and forwards to the portal after 5–10 minutes |
 | Cost | About $2.50 a day | Storage only while asleep |
 
@@ -201,7 +201,8 @@ flowchart LR
 
 - **The launcher link** is the API Gateway address. Share it instead of the Beanstalk address. Opening it while the portal is awake forwards straight to the portal. While it sleeps, it shows the waking-up page.
 - **The waking-up page** asks the Lambda function to start Aurora and the Beanstalk instance, checks every 10 seconds, and forwards to the portal when both are up.
-- **EventBridge** runs the function every 15 minutes. In hibernate mode it asks the portal how long it has been idle (`/api/health` reports it) and puts it to sleep after 30 minutes.
+- **EventBridge** runs the function every 15 minutes. In hibernate mode it asks the portal how long it has been idle (`/api/health` reports it) and puts it to sleep after 30 minutes. In active mode it only makes sure everything is still on.
+- **At midnight**, a second EventBridge rule switches to hibernate and stops everything, whatever the mode: a safety net in case active mode was left on after a presentation.
 - **The mode** is kept in SSM Parameter Store, `/cloud-dev-portal/mode`.
 - The code: [infra/portal_mode/](../infra/portal_mode/) (the function and the waking-up page; [infra/portal_mode.zip](../infra/portal_mode.zip) is the same, ready to upload, rebuilt with `python scripts/build_lambda_zip.py`), [infra/sleep-wake.yaml](../infra/sleep-wake.yaml) (CloudFormation), [scripts/portal_mode.py](../scripts/portal_mode.py).
 
@@ -224,7 +225,7 @@ You build the pieces in the order they depend on each other: the function first,
 | --- | --- | --- |
 | A1 | Lambda function | Does the work: switches modes, starts and stops Aurora and the instance, answers the launcher link |
 | A2 | SSM parameter | Remembers the current mode between runs |
-| A3 | EventBridge rule | Runs the function every 15 minutes to put an idle portal to sleep |
+| A3 | EventBridge rules | Run the function every 15 minutes to put an idle portal to sleep, and at midnight to stop everything |
 | A4 | API Gateway | The launcher link: lets a browser reach the function over HTTPS |
 | A5 | Finishing | Saves the switches; tests the whole system |
 
@@ -270,9 +271,11 @@ Systems Manager → **Parameter Store** → **Create parameter**:
 
 **Checkpoint.** Run the `status` test event again: `"mode"` is now `active`.
 
-#### A3. EventBridge rule
+#### A3. EventBridge rules
 
-EventBridge → **Rules** → **Create rule**:
+EventBridge works as the system's clock: a **rule** calls a target (the function) on a schedule, with a message you choose. No code: you fill in a form. You create two rules.
+
+**A3a. The idle check, every 15 minutes.** EventBridge → **Rules** → **Create rule**:
 
 1. Name: **`cloud-dev-portal-tick`**. Event bus: default. Rule type: **Schedule**.
    If the console suggests **EventBridge Scheduler**, choose **Continue in EventBridge rules** instead: Scheduler needs an IAM role of its own, which Learner Lab can't create, while a rule calls Lambda directly.
@@ -281,7 +284,17 @@ EventBridge → **Rules** → **Create rule**:
    - **Additional settings** → Configure target input: **Constant (JSON text)** → `{"action": "tick"}`
 4. Tags: `Project = cloud-dev-portal`, `Environment = dev` → **Create rule**.
 
-**Checkpoint.** After 15 minutes, CloudWatch → **Log groups** → `/aws/lambda/cloud-dev-portal-mode` has a new log stream: the rule ran the function. (In active mode the tick changes nothing.)
+**A3b. The midnight shutdown.** Create a second rule the same way, with:
+
+- Name: **`cloud-dev-portal-nightly-stop`**
+- Schedule pattern: **A fine-grained schedule (cron expression)** → `0 17 * * ? *`
+- Target: the same function. Target input: **Constant (JSON text)** → `{"mode": "hibernate"}`
+
+This is the same message as the `hibernate` switch: every night it sets the mode to hibernate and stops the instance and Aurora at once, whatever the mode was and whether anyone is using the portal.
+
+Rule schedules are in **UTC**: `0 17 * * ? *` means 17:00 UTC every day, which is **midnight in Thailand** (UTC+7). For another time zone, subtract its offset from midnight (e.g. UTC+9: `0 15 * * ? *`).
+
+**Checkpoint.** After 15 minutes, CloudWatch → **Log groups** → `/aws/lambda/cloud-dev-portal-mode` has a new log stream: the idle check ran the function. (While everything is on in active mode, it changes nothing.) To try the midnight rule without waiting, run the `hibernate` test event in A5: it sends the same message.
 
 #### A4. API Gateway
 
@@ -327,6 +340,8 @@ aws cloudformation package --template-file infra/sleep-wake.yaml --s3-bucket <yo
 aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud-dev-portal-modes --parameter-overrides EnvironmentName=<environment name>
 ```
 
+   The midnight shutdown defaults to midnight in Thailand; for another time zone add `NightlyStopSchedule="cron(0 15 * * ? *)"` (the time in UTC) to the overrides.
+
    It takes a minute or two. Then CloudFormation → `cloud-dev-portal-modes` → **Outputs** shows `LauncherUrl`, the launcher link (`https://abc123defg.execute-api.us-east-1.amazonaws.com`). Share it instead of the Beanstalk address.
 4. Lambda → `cloud-dev-portal-mode` → **Test** tab: save three test events:
 
@@ -340,7 +355,7 @@ aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud
 
 - **In the console:** Lambda → `cloud-dev-portal-mode` → Test → choose the event → **Test**. The result shows the state (`database`, `app_instances`, `ready`).
 - **From the terminal:** `python scripts/portal_mode.py active` (or `hibernate`, `wake`, `status`).
-- **Presentation day:** switch to `active` at least 15 minutes before you start; back to `hibernate` afterwards.
+- **Presentation day:** switch to `active` at least 15 minutes before you start; back to `hibernate` afterwards. If you forget, the midnight rule does it for you.
 - **Development day:** stay in `hibernate`. Open the launcher link and wait on the waking-up page, or run `wake` while you get ready.
 
 ### Things to know
@@ -350,7 +365,7 @@ aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud
 - Each wake builds the app on a fresh instance (the instance is removed while asleep), which takes about as long as Aurora's start, so the two overlap. A later improvement: build the image once into ECR so the instance only downloads it.
 - The function's logs are in CloudWatch → Log groups → `/aws/lambda/cloud-dev-portal-mode`.
 - If a switch fails with `AccessDenied`, LabRole doesn't allow that action in your course (`rds:StartDBCluster`/`StopDBCluster`, `autoscaling:UpdateAutoScalingGroup`, `elasticbeanstalk:DescribeEnvironmentResources`, `ssm:PutParameter`). Then stop and start Aurora by hand as in [Saving budget](#saving-budget).
-- To remove it all: with Option B, CloudFormation → `cloud-dev-portal-modes` → **Delete**. With Option A, delete the pieces in reverse order: the API, the EventBridge rule, the parameter and the function. The portal stays reachable at its Beanstalk address.
+- To remove it all: with Option B, CloudFormation → `cloud-dev-portal-modes` → **Delete**. With Option A, delete the pieces in reverse order: the API, the two EventBridge rules, the parameter and the function. The portal stays reachable at its Beanstalk address.
 
 ## Using the AWS CLI from your computer
 

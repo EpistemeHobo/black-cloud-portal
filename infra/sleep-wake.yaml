@@ -21,6 +21,10 @@ Parameters:
     Type: String
     Default: hibernate
     AllowedValues: [active, hibernate]
+  NightlyStopSchedule:
+    Type: String
+    Default: cron(0 17 * * ? *)
+    Description: When to switch to hibernate and stop everything, in UTC. The default is midnight in Thailand (UTC+7)
 
 Resources:
   # The current mode. The function overwrites it when you switch.
@@ -71,6 +75,25 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt TickRule.Arn
+
+  # Every night: switch to hibernate and stop everything, whatever the mode, in
+  # case active mode was left on after a presentation. Same message as the switch.
+  NightlyRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: cloud-dev-portal-nightly-stop
+      ScheduleExpression: !Ref NightlyStopSchedule
+      Targets:
+        - Id: mode-function
+          Arn: !GetAtt ModeFunction.Arn
+          Input: '{"mode": "hibernate"}'
+  NightlyPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ModeFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt NightlyRule.Arn
 
   # The launcher link: forwards to the portal, or shows the waking-up page and
   # its /_wake calls. Anyone with the link can call it; the throttle caps how often.
