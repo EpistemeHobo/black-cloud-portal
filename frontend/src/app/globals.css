@@ -1,0 +1,656 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap");
+
+@import "tailwindcss";
+@import "primereact/resources/themes/lara-light-blue/theme.css" layer(primeui);
+@import "primereact/resources/primereact.min.css" layer(primeui);
+@import "primeicons/primeicons.css" layer(primeui);
+
+@layer base, primeui, utilities;
+
+@plugin "tailwindcss-primeui";
+
+@theme {
+  /* Latin from Inter, Thai from Noto Sans Thai: Sarabun stacked tone marks (ทั้) into one blob at UI sizes. */
+  --font-sans: "Inter", "Noto Sans Thai", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Noto Sans Thai", monospace;
+  --color-navy: #0d274b;
+}
+
+html,
+body {
+  color: #1e293b;
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+/* PrimeReact inherits its own font unless told otherwise. */
+.p-component,
+.p-inputtext,
+.p-button,
+.p-tabview,
+.p-datatable {
+  font-family: var(--font-sans);
+}
+
+.prose-plain {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Sign-in page: each twinkle group of dots fades slowly up and down, like stars.
+   Opacity, like transform, is animated by the graphics card without redrawing. */
+.auth-twinkle {
+  will-change: opacity;
+  animation: auth-twinkle ease-in-out infinite alternate;
+}
+
+@keyframes auth-twinkle {
+  0% { opacity: 1; }
+  45% { opacity: 0.55; }
+  100% { opacity: 0.22; }
+}
+
+/* Sign-in card, right half: a plate of metallic black. Layers, top to bottom:
+   faint brushed-metal lines, a gunmetal gradient, and edge shading that makes
+   it read as a raised plate (light from above, shade at the bottom and sides). */
+.metal-panel {
+  position: relative;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 3px),
+    linear-gradient(145deg, #2c2f35 0%, #0d0e11 32%, #1b1d22 52%, #060607 78%, #24262b 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 1px 0 0 rgba(255, 255, 255, 0.06),
+    inset 0 -24px 48px rgba(0, 0, 0, 0.65),
+    inset 18px 0 40px -20px rgba(0, 0, 0, 0.7),
+    inset -18px 0 40px -20px rgba(0, 0, 0, 0.7);
+}
+
+/* Brushed silver lettering, raised off the plate by a cast shadow. */
+.metal-text {
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.9)) drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
+}
+
+/* The silver is painted on each typed line itself, not on the whole title: a
+   parent's text-clipped background ignores its children's overflow clipping,
+   which would show every letter at once and defeat the typing effect. */
+.metal-text .typewriter-line {
+  background: linear-gradient(180deg, #ffffff 0%, #d7dbe2 38%, #8b919c 52%, #cfd4dc 70%, #f4f6f9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Site theme, from the sign-in page but flipped to light: black dots on plain
+   white behind every page, a metal header, gunmetal code-font titles, white
+   cards, gunmetal buttons. The sign-in page keeps its own dark backdrop. */
+html,
+body {
+  background: #ffffff;
+}
+
+/* Dark gunmetal lettering for titles on the white background. */
+.metal-ink {
+  background: linear-gradient(180deg, #4b5058 0%, #1f2227 40%, #0b0c0f 55%, #2b2e34 80%, #3d4148 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.9));
+}
+
+/* Static brushed-silver lettering, for titles that don't type themselves out. */
+.metal-silver {
+  background: linear-gradient(180deg, #ffffff 0%, #d7dbe2 38%, #8b919c 52%, #cfd4dc 70%, #f4f6f9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.9)) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+}
+
+/* Page titles sit on the dark background, in the code font, like the sign-in title. */
+.page-title {
+  font-family: var(--font-mono);
+  font-size: 1.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* The header: deep navy space with a faint light rim along its bottom edge.
+   It stays at the top while the page scrolls, above the content. When the menu
+   no longer fits on one row it becomes a menu button (see AppShell.tsx), so the
+   bar stays one slim row at every width. */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  /* Deep navy space: a navy-blue glow at the top centre and an indigo-navy one
+     at the right, over a dark navy gradient. */
+  background:
+    radial-gradient(ellipse 55% 140% at 50% -20%, rgba(44, 78, 150, 0.55), transparent 70%),
+    radial-gradient(ellipse 35% 160% at 100% 50%, rgba(46, 58, 130, 0.45), transparent 70%),
+    linear-gradient(145deg, #0a1126 0%, #0d1734 55%, #111a3d 100%);
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+    0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Header dots: only in the empty space either side of the header's content
+   (max-w-7xl, 80rem wide, centred), fading out before they reach it. Where the
+   screen is too narrow for empty space, nothing shows. */
+.header-dots {
+  overflow: hidden;
+  --content-half: 40rem;
+  mask-image: linear-gradient(to right,
+    #000 0,
+    #000 calc(50% - var(--content-half) - 6rem),
+    transparent calc(50% - var(--content-half) + 1rem),
+    transparent calc(50% + var(--content-half) - 1rem),
+    #000 calc(50% + var(--content-half) + 6rem),
+    #000 100%);
+}
+
+/* The drop-down menu under the header on narrow screens: the same deep navy. */
+.site-menu-panel {
+  background: linear-gradient(180deg, #0d1734 0%, #0a1126 100%);
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+    0 12px 24px rgba(9, 10, 17, 0.35);
+}
+
+/* White content cards with the sign-in card's faint light edge. */
+.site-card {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* Gunmetal black buttons, matching the metal panel: every main (filled, no
+   colour-coded severity) button, plus anything marked .metal-button. Overrides
+   PrimeReact's colours, which sit in a lower CSS layer. */
+:is(.metal-button, :not(.p-button-outlined, .p-button-text, .p-button-link, .p-button-secondary,
+    .p-button-success, .p-button-info, .p-button-warning, .p-button-help, .p-button-danger,
+    .p-button-contrast)).p-button {
+  background: linear-gradient(180deg, #3a3e45 0%, #1c1e22 48%, #0e0f12 52%, #24272c 100%);
+  border: 1px solid #0a0b0d;
+  color: #f3f4f6;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 2px 4px rgba(0, 0, 0, 0.35);
+  transition: filter 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+:is(.metal-button, :not(.p-button-outlined, .p-button-text, .p-button-link, .p-button-secondary,
+    .p-button-success, .p-button-info, .p-button-warning, .p-button-help, .p-button-danger,
+    .p-button-contrast)).p-button:enabled:hover {
+  background: linear-gradient(180deg, #3a3e45 0%, #1c1e22 48%, #0e0f12 52%, #24272c 100%);
+  border-color: #0a0b0d;
+  color: #ffffff;
+  filter: brightness(1.25);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+:is(.metal-button, :not(.p-button-outlined, .p-button-text, .p-button-link, .p-button-secondary,
+    .p-button-success, .p-button-info, .p-button-warning, .p-button-help, .p-button-danger,
+    .p-button-contrast)).p-button:enabled:active {
+  filter: brightness(0.95);
+  transform: translateY(0);
+}
+
+:is(.metal-button, :not(.p-button-outlined, .p-button-text, .p-button-link, .p-button-secondary,
+    .p-button-success, .p-button-info, .p-button-warning, .p-button-help, .p-button-danger,
+    .p-button-contrast)).p-button:focus-visible {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 3px rgba(148, 163, 184, 0.55);
+}
+
+/* Outlined and text buttons: neutral graphite instead of blue. */
+.p-button.p-button-outlined:not(.p-button-secondary, .p-button-danger) {
+  color: #334155;
+  border-color: #94a3b8;
+}
+
+.p-button.p-button-outlined:not(.p-button-secondary, .p-button-danger):enabled:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #64748b;
+}
+
+.p-button.p-button-text:not(.p-button-secondary, .p-button-danger) {
+  color: #334155;
+}
+
+.p-button.p-button-text:not(.p-button-secondary, .p-button-danger):enabled:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+/* Tabs on the white background: grey labels, a gunmetal line under the active one. */
+.site-tabs .p-tabview-nav,
+.site-tabs .p-tabview-nav-container,
+.site-tabs .p-tabview-nav-content {
+  background: transparent;
+}
+
+.site-tabs .p-tabview-nav {
+  border-color: #e2e8f0;
+}
+
+.site-tabs .p-tabview-nav li .p-tabview-nav-link {
+  background: transparent;
+  color: #64748b;
+  border-color: transparent transparent #e2e8f0;
+}
+
+.site-tabs .p-tabview-nav li:not(.p-highlight):not(.p-disabled):hover .p-tabview-nav-link {
+  background: rgba(15, 23, 42, 0.03);
+  color: #0f172a;
+  border-color: transparent transparent #94a3b8;
+}
+
+.site-tabs .p-tabview-nav li.p-highlight .p-tabview-nav-link {
+  background: transparent;
+  color: #0f172a;
+  border-color: transparent transparent #1f2227;
+}
+
+.site-tabs .p-tabview-nav-link:not(.p-disabled):focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(148, 163, 184, 0.6);
+}
+
+/* Sign-in title: each line grows one character width (1ch) at a time, with
+   the cursor on its right edge, so letters appear where the cursor is. Works
+   because the title uses the monospaced code font. The cursor has a fixed colour
+   because the silver text itself is transparent. */
+.typewriter-line {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  width: 0;
+  /* The cursor is a border, which sits outside the clipped area, so it is never cut off. */
+  border-right: 0.08em solid transparent;
+}
+
+/* First line: the cursor shows only while this line is typing, then moves on. */
+.typewriter-cursor-passes {
+  animation:
+    typewriter-type var(--tw-seconds) steps(var(--tw-chars)) var(--tw-delay) forwards,
+    typewriter-cursor-on var(--tw-seconds) var(--tw-delay);
+}
+
+/* Last line: the cursor arrives when this line starts and keeps blinking. */
+.typewriter-cursor-stays {
+  animation:
+    typewriter-type var(--tw-seconds) steps(var(--tw-chars)) var(--tw-delay) forwards,
+    typewriter-blink 0.9s step-end var(--tw-delay) infinite;
+}
+
+@keyframes typewriter-type {
+  from { width: 0; }
+  to { width: calc(var(--tw-chars) * 1ch); }
+}
+
+@keyframes typewriter-cursor-on {
+  from, to { border-right-color: #e5e7eb; }
+}
+
+@keyframes typewriter-blink {
+  0% { border-right-color: #e5e7eb; }
+  50% { border-right-color: transparent; }
+}
+
+/* The mirror image under the title: flipped, faded, and fading out downwards. */
+.typewriter-reflection {
+  margin-top: 0.15rem;
+  transform: scaleY(-1);
+  opacity: 0.3;
+  /* The mask is drawn before the flip, so "to top" fades it away from the title. */
+  mask-image: linear-gradient(to top, #000 0%, transparent 75%);
+}
+
+/* Before the title types itself out again, the old one fades away rather than
+   vanishing. The new title mounts without this class, so it is fully visible
+   and starts typing from empty. */
+.title-retype {
+  transition: opacity 1.4s ease;
+}
+
+.title-retype.title-fading {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-twinkle {
+    animation: none;
+  }
+
+  .title-retype {
+    transition: none;
+  }
+
+  .typewriter-line {
+    width: auto;
+    animation: none;
+  }
+}
+
+/* Sign-in card: a faint light edge only, no dark shadow. */
+.auth-card {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Switching between Sign in and Sign up: the new view fades and rises in. */
+.auth-view {
+  animation: auth-view-in 0.6s ease-out;
+}
+
+@keyframes auth-view-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Light shining from behind the card's top-right corner. The source sits behind
+   the card, a little in from the corner, so the card blocks it and only the glow
+   spilling past the top and right edges shows. It is built from a few blurred,
+   irregular blobs (no perfect circles), two of them stretched along the edges
+   the way real light spills. It is still: nothing animates. */
+.auth-backlight {
+  position: absolute;
+  top: 70px;
+  right: 70px;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  /* Smaller: every blob shrinks towards the hidden light source. */
+  transform: scale(0.6);
+  transform-origin: 0 0;
+}
+
+/* Each blob is placed by --x/--y (its centre, relative to the source) and
+   tilted by --r. */
+.backlight-blob {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) rotate(var(--r));
+}
+
+/* A faint blue haze, wider than tall, with a lumpy outline. */
+.backlight-haze {
+  --x: 10px; --y: -20px; --r: -16deg;
+  width: 560px;
+  height: 340px;
+  border-radius: 46% 54% 38% 62% / 55% 42% 58% 45%;
+  background: radial-gradient(closest-side, rgba(120, 160, 255, 0.4), rgba(90, 120, 240, 0.14) 55%, transparent);
+  filter: blur(34px);
+}
+
+/* The brighter heart, off-centre and uneven. */
+.backlight-heart {
+  --x: 18px; --y: -34px; --r: 24deg;
+  width: 260px;
+  height: 170px;
+  border-radius: 58% 42% 51% 49% / 40% 60% 40% 60%;
+  background: radial-gradient(closest-side, rgba(236, 243, 255, 0.85), rgba(170, 198, 255, 0.4) 45%, transparent);
+  filter: blur(20px);
+}
+
+/* Light running along the top edge, to the left of the corner. */
+.backlight-spill-top {
+  --x: -150px; --y: -74px; --r: -3deg;
+  width: 420px;
+  height: 70px;
+  border-radius: 50% 50% 46% 54% / 60% 60% 40% 40%;
+  background: radial-gradient(closest-side, rgba(200, 218, 255, 0.5), rgba(130, 165, 255, 0.16) 60%, transparent);
+  filter: blur(16px);
+}
+
+/* Light running down the right edge, below the corner. */
+.backlight-spill-right {
+  --x: 74px; --y: 120px; --r: 4deg;
+  width: 64px;
+  height: 330px;
+  border-radius: 55% 45% 50% 50% / 48% 52% 48% 52%;
+  background: radial-gradient(closest-side, rgba(200, 218, 255, 0.45), rgba(130, 165, 255, 0.14) 60%, transparent);
+  filter: blur(16px);
+}
+
+/* Rim light: the backlight catching the card's top and right edges, brightest
+   at the corner and fading along each edge. */
+.auth-rim {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 45%;
+  height: 55%;
+  border-top-right-radius: 1rem;
+  pointer-events: none;
+  box-shadow:
+    inset -1px 1px 0 rgba(225, 235, 255, 0.75),
+    inset -6px 6px 18px -8px rgba(170, 195, 255, 0.35);
+  mask-image: radial-gradient(farthest-corner at 100% 0%, #000 0%, rgba(0, 0, 0, 0.5) 40%, transparent 85%);
+  opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-view {
+    animation: none;
+  }
+}
+
+/* ---------- Markdown files attached to the handover guide ----------
+   Clean reading type, close to how Claude shows a markdown artifact. */
+.markdown-body {
+  color: #1e293b;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body > :last-child { margin-bottom: 0; }
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  color: #0f172a;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.6em 0 0.6em;
+}
+.markdown-body h1 { font-size: 1.6rem; }
+.markdown-body h2 { font-size: 1.3rem; padding-bottom: 0.3em; border-bottom: 1px solid #e2e8f0; }
+.markdown-body h3 { font-size: 1.1rem; }
+.markdown-body h4 { font-size: 1rem; }
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body blockquote,
+.markdown-body table,
+.markdown-body .md-code {
+  margin: 0 0 1em;
+}
+
+.markdown-body ul { list-style: disc; padding-left: 1.5em; }
+.markdown-body ol { list-style: decimal; padding-left: 1.5em; }
+.markdown-body li { margin: 0.25em 0; }
+.markdown-body li > ul,
+.markdown-body li > ol { margin: 0.25em 0 0; }
+.markdown-body li::marker { color: #64748b; }
+
+/* GitHub task lists: "- [x] done" */
+.markdown-body li.task-list-item { list-style: none; margin-left: -1.4em; }
+.markdown-body li.task-list-item input { margin-right: 0.5em; vertical-align: -0.1em; accent-color: #0369a1; }
+
+.markdown-body a { color: #0369a1; text-decoration: underline; text-underline-offset: 2px; }
+.markdown-body strong { font-weight: 600; color: #0f172a; }
+.markdown-body hr { border: 0; border-top: 1px solid #e2e8f0; margin: 1.75em 0; }
+.markdown-body img { max-width: 100%; border-radius: 0.5rem; }
+
+.markdown-body blockquote {
+  border-left: 3px solid #cbd5e1;
+  padding: 0.1em 0 0.1em 1em;
+  color: #475569;
+}
+
+.markdown-body :not(pre) > code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.3rem;
+  padding: 0.1em 0.35em;
+}
+
+.markdown-body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.markdown-body th,
+.markdown-body td { border: 1px solid #e2e8f0; padding: 0.45em 0.8em; text-align: left; }
+.markdown-body th { background: #f8fafc; font-weight: 600; }
+.markdown-body tr:nth-child(even) td { background: #fbfcfd; }
+
+/* Code blocks: dark panel with a copy button in the corner. */
+.md-code { position: relative; }
+.markdown-body pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 0.6rem;
+  padding: 1em 1.1em;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.md-copy {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.5rem;
+  border-radius: 0.35rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.06);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.md-code:hover .md-copy,
+.md-copy:focus-visible { opacity: 1; }
+.md-copy:hover { color: #e2e8f0; }
+
+/* Syntax colours (highlight.js classes from rehype-highlight). */
+.markdown-body .hljs-comment,
+.markdown-body .hljs-quote { color: #64748b; font-style: italic; }
+.markdown-body .hljs-keyword,
+.markdown-body .hljs-selector-tag,
+.markdown-body .hljs-meta .hljs-keyword { color: #c4b5fd; }
+.markdown-body .hljs-string,
+.markdown-body .hljs-regexp,
+.markdown-body .hljs-addition { color: #86efac; }
+.markdown-body .hljs-number,
+.markdown-body .hljs-literal { color: #fdba74; }
+.markdown-body .hljs-title,
+.markdown-body .hljs-title.function_,
+.markdown-body .hljs-section { color: #7dd3fc; }
+.markdown-body .hljs-attr,
+.markdown-body .hljs-attribute,
+.markdown-body .hljs-variable,
+.markdown-body .hljs-property { color: #f9a8d4; }
+.markdown-body .hljs-built_in,
+.markdown-body .hljs-type { color: #fcd34d; }
+.markdown-body .hljs-deletion { color: #fca5a5; }
+
+/* A long file starts folded, with a fade at the bottom. */
+.md-folded {
+  max-height: 22rem;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 75%, transparent);
+}
+
+/* ---------- Black hole on the sign-in card (WarpPortal.tsx) ----------
+   The disk's streak bands orbit the hole, inner ones faster (roughly Kepler's
+   law); the photon ring and lensed halo flicker gently. Only transform and
+   opacity animate. */
+.black-hole {
+  pointer-events: none;
+  mix-blend-mode: screen;
+  overflow: visible;
+}
+
+.bh-band {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bh-orbit linear infinite;
+}
+
+.bh-band-inner { animation-duration: 7s; }
+.bh-band-mid { animation-duration: 15s; }
+.bh-band-outer { animation-duration: 32s; }
+
+.bh-photon-ring {
+  animation: bh-flicker 2.7s ease-in-out infinite alternate;
+}
+
+.bh-halo {
+  animation: bh-flicker 5.3s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes bh-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bh-flicker {
+  from { opacity: 0.72; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bh-band,
+  .bh-photon-ring,
+  .bh-halo {
+    animation: none;
+  }
+}
+
+/* PrimeReact's Password with toggleMask wraps the input in an icon field that
+   doesn't stretch, so a full-width password box came out narrower than the others. */
+.p-password.w-full .p-icon-field {
+  width: 100%;
+}
+
+/* A soft line between list rows, fading out towards both ends. */
+.soft-divide > li + li {
+  border-top: 1px solid transparent;
+  border-image: linear-gradient(to right, transparent, #e2e8f0 12%, #cbd5e1 50%, #e2e8f0 88%, transparent) 1;
+}
+
+/* The red warning light after the dashboard's "needs attention" heading: a
+   glowing dot that slowly fades and brightens. */
+.attention-light {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: #ef4444;
+  box-shadow: 0 0 4px 1px rgba(239, 68, 68, 0.7), 0 0 10px 2px rgba(239, 68, 68, 0.35);
+  animation: attention-light 2.4s ease-in-out infinite;
+}
+
+@keyframes attention-light {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; box-shadow: 0 0 2px 0 rgba(239, 68, 68, 0.3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attention-light {
+    animation: none;
+  }
+}

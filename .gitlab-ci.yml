@@ -1,0 +1,69 @@
+# Test on every push; build and deploy from main. Production deploy needs a manual click.
+# CI/CD variables to set (Settings > CI/CD > Variables, masked):
+#   IMAGE_REPO      e.g. registry.example.org/t2gen/developer-portal (a PRIVATE repository)
+#   REGISTRY_USER, REGISTRY_TOKEN, REGISTRY_HOST   credentials for IMAGE_REPO
+#   CACHE_REPO      kaniko layer cache repository (optional)
+stages:
+  - test
+  - package
+  - deploy
+
+default:
+  tags:
+    - gitnks
+
+variables:
+  IMAGE_TAG: $IMAGE_REPO:$CI_COMMIT_SHA
+
+backend tests:
+  stage: test
+  image: python:3.11-slim
+  script:
+    - cd backend
+    - pip install --no-cache-dir -r requirements-dev.txt
+    - python -m pytest -q
+    - python -m alembic check
+
+frontend checks:
+  stage: test
+  image: node:24-slim
+  script:
+    - cd frontend
+    - npm ci --no-audit --no-fund
+    - npx eslint src
+    - npx tsc --noEmit
+    - npm run build
+
+package:
+  stage: package
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - |
+      cat > /kaniko/.docker/config.json <<EOF
+      {"auths":{"${REGISTRY_HOST}":{"username":"${REGISTRY_USER}","password":"${REGISTRY_TOKEN}"}}}
+      EOF
+  script:
+    - |
+      /kaniko/executor \
+        --context "${CI_PROJECT_DIR}" \
+        --dockerfile "${CI_PROJECT_DIR}/Dockerfile" \
+        --destination "${IMAGE_TAG}" \
+        --destination "${IMAGE_REPO}:latest" \
+        ${CACHE_REPO:+--cache=true --cache-repo="${CACHE_REPO}" --cache-ttl=168h}
+
+deploy production:
+  stage: deploy
+  image: alpine/k8s:1.28.2
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  environment:
+    name: production
+  script:
+    - sed "s#IMAGE#${IMAGE_TAG}#g" deployment.template.yaml > deployment.yaml
+    - kubectl apply -f deployment.yaml

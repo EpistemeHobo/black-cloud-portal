@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The sign-in card's black hole (WarpPortal.tsx), simplified so it still
+       reads at 16 px: shadow, photon ring, lensed halo, and a tilted disk whose
+       near half crosses in front, brighter on the approaching (left) side. -->
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.42" r="0.75">
+      <stop offset="0" stop-color="#1c2758"/>
+      <stop offset="0.6" stop-color="#0a0f24"/>
+      <stop offset="1" stop-color="#04050a"/>
+    </radialGradient>
+    <radialGradient id="haze" cx="0" cy="0" r="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c9d7ff" stop-opacity="0.45"/>
+      <stop offset="0.55" stop-color="#5b74e8" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#3b4fd0" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Disk brightness by radius, drawn in the disk's own (unsquashed) plane. -->
+    <radialGradient id="disk" cx="0" cy="0" r="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.25" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.29" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="0.5" stop-color="#e3ebff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#7d95ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="halo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.45" stop-color="#c9d8ff" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#a9bcff" stop-opacity="0.55"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.38"/>
+    </linearGradient>
+    <mask id="beaming" maskUnits="userSpaceOnUse" x="-32" y="-32" width="64" height="64">
+      <rect x="-32" y="-32" width="64" height="64" fill="url(#beam)"/>
+    </mask>
+    <clipPath id="near">
+      <rect x="-32" y="0" width="64" height="32"/>
+    </clipPath>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.1"/>
+    </filter>
+    <g id="disk-shape">
+      <g transform="scale(1 0.3)">
+        <circle r="28" fill="url(#disk)"/>
+        <!-- Faint bands in the gas, softened so they don't look drawn. -->
+        <g filter="url(#soft)">
+          <circle r="14.5" fill="none" stroke="#fff" stroke-opacity="0.5" stroke-width="1.4" vector-effect="non-scaling-stroke"/>
+          <circle r="20.5" fill="none" stroke="#dbe5ff" stroke-opacity="0.3" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+        </g>
+      </g>
+    </g>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+
+  <g transform="translate(32 32) rotate(-12)">
+    <circle r="30" fill="url(#haze)"/>
+    <!-- Far half of the disk. -->
+    <use href="#disk-shape" mask="url(#beaming)"/>
+    <!-- Lensed halo of the far side. -->
+    <circle r="12.2" fill="none" stroke="url(#halo)" stroke-width="4" filter="url(#soft)" opacity="0.7"/>
+    <circle r="11.1" fill="none" stroke="url(#halo)" stroke-width="1"/>
+    <!-- Shadow and photon ring. -->
+    <circle r="9.4" fill="#000"/>
+    <circle r="9.6" fill="none" stroke="#f4f7ff" stroke-width="0.9"/>
+    <!-- Near half of the disk, in front of the shadow. -->
+    <g clip-path="url(#near)">
+      <use href="#disk-shape" mask="url(#beaming)"/>
+    </g>
+  </g>
+</svg>

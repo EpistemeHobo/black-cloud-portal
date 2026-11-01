@@ -1,0 +1,337 @@
+{
+  "version": "v1",
+  "note": "Matches T2GEN-STANDARDS.md (in Thai). kb_path is relative to KB_BASE_URL. Items without applies_to_types apply to every system type.",
+  "items": [
+    {
+      "code": "A1",
+      "category": "A. การตั้งต้นโครงการ",
+      "from_step": 1,
+      "level": "required",
+      "title": "สรุปโครงการ: ปัญหา ผู้ใช้ เจ้าของ และผู้ดูแลสำรอง",
+      "how_to_verify": "docs/brief.md หรือลิงก์สรุปโครงการ",
+      "kb_path": "development-basics/#project-brief"
+    },
+    {
+      "code": "A2",
+      "category": "A. การตั้งต้นโครงการ",
+      "from_step": 1,
+      "level": "required",
+      "title": "เก็บโค้ดไว้ใน Git repository กลางขององค์กร",
+      "how_to_verify": "มีลิงก์ที่เก็บซอร์สโค้ดไปยังกลุ่ม GitLab ของ T2Gen",
+      "kb_path": "standards/source-control/",
+      "auto_rule": "has_source_repo",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Database",
+        "Pipeline",
+        "Script",
+        "Infrastructure"
+      ]
+    },
+    {
+      "code": "B1",
+      "category": "B. เทคโนโลยีและโครงสร้าง",
+      "from_step": 2,
+      "level": "required",
+      "title": "บันทึกการเลือกเทคโนโลยีพร้อมเหตุผล",
+      "how_to_verify": "docs/decisions/0001-tech-stack.md ครอบคลุม: เหมาะกับงาน ใครดูแลได้ ทางเลือกที่พิจารณา และค่าใช้จ่าย",
+      "kb_path": "reference/tech-stack/",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Database",
+        "Pipeline",
+        "Script",
+        "Infrastructure"
+      ]
+    },
+    {
+      "code": "B2",
+      "category": "B. เทคโนโลยีและโครงสร้าง",
+      "from_step": 2,
+      "level": "required",
+      "title": "ผู้ดูแลการติดตั้งเว็บยืนยันว่าเทคโนโลยีนี้ใช้กับไปป์ไลน์มาตรฐานได้",
+      "how_to_verify": "มีชื่อผู้ยืนยันและวันที่ในบันทึกการตัดสินใจเรื่องเทคโนโลยี",
+      "kb_path": "reference/tech-stack/#the-rule",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Database",
+        "Pipeline",
+        "Script",
+        "Infrastructure"
+      ]
+    },
+    {
+      "code": "B3",
+      "category": "B. เทคโนโลยีและโครงสร้าง",
+      "from_step": 2,
+      "level": "required",
+      "title": "สร้างจากเทมเพลตเริ่มต้นของเทคโนโลยีนั้น หรือใช้โครงสร้างโฟลเดอร์มาตรฐาน",
+      "how_to_verify": "มี README.md, docs/, .gitlab-ci.yml, Dockerfile, .env.example และ tests/",
+      "kb_path": "reference/tech-stack/#starter-templates",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script"
+      ]
+    },
+    {
+      "code": "B4",
+      "category": "B. เทคโนโลยีและโครงสร้าง",
+      "from_step": 2,
+      "level": "recommended",
+      "title": "บันทึกการตัดสินใจด้านการออกแบบที่สำคัญ",
+      "how_to_verify": "มีบันทึกการตัดสินใจใน docs/decisions/",
+      "kb_path": "development-basics/#decision-record"
+    },
+    {
+      "code": "C1",
+      "category": "C. ความปลอดภัยและการยืนยันตัวตน",
+      "from_step": 3,
+      "level": "required",
+      "title": "เข้าสู่ระบบด้วย SSO ขององค์กร ตั้งค่าตามวิธีมาตรฐาน",
+      "how_to_verify": "ตั้งค่า SSO ตามคู่มือในฐานความรู้",
+      "kb_path": "how-to/sso-setup/"
+    },
+    {
+      "code": "C2",
+      "category": "C. ความปลอดภัยและการยืนยันตัวตน",
+      "from_step": 3,
+      "level": "required",
+      "title": "ไม่มีข้อมูลลับในโค้ด",
+      "how_to_verify": "รหัสผ่าน โทเคน และคีย์ มาจากตัวแปรสภาพแวดล้อมหรือที่เก็บความลับ ไม่อยู่ในโค้ดหรือประวัติ Git",
+      "kb_path": "standards/architecture-principles/",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Database",
+        "Pipeline",
+        "Script",
+        "Infrastructure"
+      ]
+    },
+    {
+      "code": "C3",
+      "category": "C. ความปลอดภัยและการยืนยันตัวตน",
+      "from_step": 3,
+      "level": "required",
+      "title": "ค่าตั้งค่ามาจากตัวแปรสภาพแวดล้อม",
+      "how_to_verify": "มี .env.example และ .env อยู่ใน .gitignore",
+      "kb_path": "development-basics/#readme",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script"
+      ]
+    },
+    {
+      "code": "C4",
+      "category": "C. ความปลอดภัยและการยืนยันตัวตน",
+      "from_step": 3,
+      "level": "required",
+      "title": "พิจารณาความเสี่ยงเว็บที่พบบ่อย (OWASP Top 10)",
+      "how_to_verify": "ตรวจสอบข้อมูลนำเข้า ควบคุมสิทธิ์ อัปเดตไลบรารี และไม่มีไลบรารีที่มีช่องโหว่ที่ทราบ",
+      "kb_path": "standards/architecture-principles/",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform"
+      ]
+    },
+    {
+      "code": "D1",
+      "category": "D. คุณภาพโค้ดและการรีวิว",
+      "from_step": 3,
+      "level": "required",
+      "title": "ทุกการเปลี่ยนแปลงได้รับการรีวิวจากอีกหนึ่งคนก่อนรวมโค้ด",
+      "how_to_verify": "Merge request แสดงผู้รีวิว",
+      "kb_path": "standards/code-reviews/",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script",
+        "Infrastructure"
+      ]
+    },
+    {
+      "code": "D2",
+      "category": "D. คุณภาพโค้ดและการรีวิว",
+      "from_step": 3,
+      "level": "required",
+      "title": "ใช้ branch อายุสั้นแล้วรวมเข้า main",
+      "how_to_verify": "ประวัติ branch ใน Git",
+      "kb_path": "standards/source-control/",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script",
+        "Infrastructure"
+      ]
+    },
+    {
+      "code": "D3",
+      "category": "D. คุณภาพโค้ดและการรีวิว",
+      "from_step": 3,
+      "level": "required",
+      "title": "รูปแบบโค้ดสม่ำเสมอด้วย linter หรือ formatter",
+      "how_to_verify": "มีไฟล์ตั้งค่า linter หรือ formatter",
+      "kb_path": "standards/code-reviews/",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script"
+      ]
+    },
+    {
+      "code": "D4",
+      "category": "D. คุณภาพโค้ดและการรีวิว",
+      "from_step": 3,
+      "level": "recommended",
+      "title": "มีการทดสอบสำหรับตรรกะที่สำคัญ",
+      "how_to_verify": "มีโฟลเดอร์ tests/ และไปป์ไลน์รันการทดสอบ",
+      "kb_path": "development-basics/#test-plan",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script"
+      ]
+    },
+    {
+      "code": "E1",
+      "category": "E. การติดตั้งใช้งาน",
+      "from_step": 5,
+      "level": "required",
+      "title": "ติดตั้งผ่านไปป์ไลน์มาตรฐาน ไม่ต้องตั้งค่าพิเศษ",
+      "how_to_verify": "ใช้ไปป์ไลน์จากเทมเพลตเริ่มต้นของเทคโนโลยีนั้น โดยไม่เปลี่ยนโครงสร้าง",
+      "kb_path": "standards/ci-cd/",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script"
+      ]
+    },
+    {
+      "code": "E2",
+      "category": "E. การติดตั้งใช้งาน",
+      "from_step": 5,
+      "level": "required",
+      "title": "ไม่ต้องทำขั้นตอนด้วยมือบนเซิร์ฟเวอร์เพื่อติดตั้ง",
+      "how_to_verify": "หัวข้อการติดตั้งใน README อธิบายเฉพาะไปป์ไลน์",
+      "kb_path": "standards/ci-cd/",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script"
+      ]
+    },
+    {
+      "code": "E3",
+      "category": "E. การติดตั้งใช้งาน",
+      "from_step": 5,
+      "level": "required",
+      "title": "มีหมายเลขเวอร์ชันและบันทึกการเปลี่ยนแปลง",
+      "how_to_verify": "มี CHANGELOG.md หรือแท็กเวอร์ชัน",
+      "kb_path": "development-basics/#changelog",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script"
+      ]
+    },
+    {
+      "code": "F1",
+      "category": "F. เอกสารและการสนับสนุน",
+      "from_step": 5,
+      "level": "required",
+      "title": "README: ทำอะไร ใครเป็นเจ้าของ วิธีรันบนเครื่อง และวิธีติดตั้ง",
+      "how_to_verify": "README.md ครอบคลุมทั้งสี่เรื่อง",
+      "kb_path": "development-basics/#readme",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Pipeline",
+        "Script"
+      ]
+    },
+    {
+      "code": "F2",
+      "category": "F. เอกสารและการสนับสนุน",
+      "from_step": 5,
+      "level": "required",
+      "title": "คู่มือการดูแลระบบ: ปัญหาที่พบบ่อย ตำแหน่งล็อก และผู้ติดต่อ",
+      "how_to_verify": "docs/runbook.md หรือลิงก์คู่มือการดูแลระบบ",
+      "kb_path": "development-basics/#runbook"
+    },
+    {
+      "code": "F3",
+      "category": "F. เอกสารและการสนับสนุน",
+      "from_step": 5,
+      "level": "required",
+      "title": "ระบุผู้ดูแลสำรองที่รันและแก้ไขระบบได้",
+      "how_to_verify": "มีผู้ดูแลสำรองระบุไว้ในพอร์ทัล",
+      "kb_path": "development-basics/#project-brief",
+      "auto_rule": "has_backup_owner"
+    },
+    {
+      "code": "F4",
+      "category": "F. เอกสารและการสนับสนุน",
+      "from_step": 5,
+      "level": "required",
+      "title": "ภาพร่างสถาปัตยกรรม",
+      "how_to_verify": "มีแผนภาพหรือคำอธิบายใน docs/architecture.md หรือลิงก์สถาปัตยกรรม",
+      "kb_path": "development-basics/#architecture-notes",
+      "applies_to_types": [
+        "Web app",
+        "Internal tool",
+        "Platform",
+        "Database",
+        "Pipeline",
+        "Infrastructure"
+      ]
+    },
+    {
+      "code": "G1",
+      "category": "G. การดำเนินงาน",
+      "from_step": 6,
+      "level": "required",
+      "title": "อยู่ในทะเบียนระบบ",
+      "how_to_verify": "ระบบนี้อยู่ในพอร์ทัลนี้",
+      "kb_path": null,
+      "auto_rule": "always_done"
+    },
+    {
+      "code": "G2",
+      "category": "G. การดำเนินงาน",
+      "from_step": 6,
+      "level": "required",
+      "title": "มีระบบล็อกและการสำรองข้อมูล",
+      "how_to_verify": "คู่มือการดูแลระบบระบุตำแหน่งล็อกและข้อมูลสำรอง",
+      "kb_path": "development-basics/#runbook"
+    }
+  ]
+}

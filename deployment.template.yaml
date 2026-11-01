@@ -1,0 +1,200 @@
+# T2Gen Internal Developer Portal on Kubernetes. Applied by the pipeline, which
+# replaces the word in capitals on the image lines with the built image.
+# The deployer fills in every <...> before the first deploy.
+#
+# Secrets are NOT in this file. Create them once in the cluster:
+#   kubectl -n developer-portal create secret generic developer-portal-secrets \
+#     --from-literal=JWT_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \
+#     --from-literal=SMTP_PASSWORD='<Resend API key>' \
+#     --from-literal=SEED_ADMIN_PASSWORD='<first admin password, 12+ characters>'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: developer-portal
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: developer-portal-config
+  namespace: developer-portal
+data:
+  ENVIRONMENT: "production"
+  ALLOWED_HOSTS: "<internal hostname, e.g. devportal.t2gen.internal>"
+  COOKIE_SECURE: "true"
+  KB_BASE_URL: "<knowledge base address>"
+  # The first admin; the password is SEED_ADMIN_PASSWORD in the secret.
+  SEED_ADMIN_EMAIL: "<first admin's email>"
+  SEED_ADMIN_NAME: "<first admin's name>"
+  SUPPORT_EMAIL: "<email shown on the sign-in page to contact, also used for Webex>"
+  # Only these domains may sign up, e.g. "nstda.or.th". Empty: any.
+  ALLOWED_EMAIL_DOMAINS: ""
+  # Email through Resend; the API key is SMTP_PASSWORD in the secret.
+  SMTP_HOST: "smtp.resend.com"
+  SMTP_PORT: "587"
+  SMTP_USERNAME: "resend"
+  MAIL_FROM: "T2Gen Developer Portal <noreply@<domain verified in Resend>>"
+  # For the links in emails.
+  PUBLIC_BASE_URL: "https://<internal hostname>"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: developer-portal
+  namespace: developer-portal
+  labels:
+    app: developer-portal
+spec:
+  # SQLite: exactly one pod may write the database, so never two at once.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: developer-portal
+  template:
+    metadata:
+      labels:
+        app: developer-portal
+    spec:
+      # The data directory is a local path on one node; keep the pod there.
+      nodeSelector:
+        gb/type: web
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: developer-portal
+          image: IMAGE
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: developer-portal-config
+            - secretRef:
+                name: developer-portal-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+              httpHeaders:
+                - name: Host
+                  value: "<internal hostname>"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+              httpHeaders:
+                - name: Host
+                  value: "<internal hostname>"
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /app/instance
+      volumes:
+        - name: data
+          hostPath:
+            path: "<data path on the node, e.g. /nbt_main/k8sfs/pvs/manual/developer-portal>"
+            type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: developer-portal
+  namespace: developer-portal
+spec:
+  selector:
+    app: developer-portal
+  ports:
+    - port: 80
+      targetPort: 8080
+
+---
+# Internal network only: use the ingress class that is not reachable from the internet.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: developer-portal
+  namespace: developer-portal
+spec:
+  ingressClassName: "<internal ingress class>"
+  rules:
+    - host: "<internal hostname>"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: developer-portal
+                port:
+                  number: 80
+
+---
+# Nightly copy of the database, kept for 30 days. Uses SQLite's online backup,
+# so it is safe while the app is running.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: developer-portal-backup
+  namespace: developer-portal
+spec:
+  schedule: "30 1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          nodeSelector:
+            gb/type: web
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+          containers:
+            - name: backup
+              image: IMAGE
+              command: ["python", "-c"]
+              args:
+                - |
+                  import sqlite3, datetime, pathlib, time
+                  out = pathlib.Path("/backup")
+                  target = out / f"portal-{datetime.date.today():%Y%m%d}.db"
+                  src = sqlite3.connect("/app/instance/portal.db")
+                  dst = sqlite3.connect(target)
+                  src.backup(dst)
+                  dst.close(); src.close()
+                  cutoff = time.time() - 30 * 86400
+                  for old in out.glob("portal-*.db"):
+                      if old.stat().st_mtime < cutoff:
+                          old.unlink()
+                  print("Backed up to", target)
+              volumeMounts:
+                - name: data
+                  mountPath: /app/instance
+                  readOnly: true
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: data
+              hostPath:
+                path: "<data path on the node, same as above>"
+                type: Directory
+            - name: backup
+              hostPath:
+                path: "<backup path, ideally a different disk, e.g. /nbt_backup/developer-portal>"
+                type: DirectoryOrCreate
