@@ -128,7 +128,7 @@ Elastic Beanstalk → **Create application**.
 
 | Name | Value |
 | --- | --- |
-| `ENVIRONMENT` | `staging` (not `production` yet: that requires SMTP and HTTPS, which come with Cognito and CloudFront) |
+| `ENVIRONMENT` | `staging` (not `production` yet: that requires SMTP and HTTPS) |
 | `JWT_SECRET_KEY` | 48+ random characters: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `DB_HOST` | the Aurora writer endpoint |
 | `DB_NAME` | `portal` |
@@ -185,36 +185,36 @@ Two modes, switched with one click:
 | --- | --- | --- |
 | Aurora and the Beanstalk instance | Always on | Asleep when nobody uses the portal |
 | Goes to sleep | Never | After 30 minutes without visitors (checked every 15 minutes) |
-| Opening the site | Instant | While asleep: a "waking up" page; the portal opens by itself after 5–10 minutes |
+| Opening the site | Instant | Through the **launcher link**: while asleep it shows a "waking up" page, and forwards to the portal after 5–10 minutes |
 | Cost | About $2.50 a day | Storage only while asleep |
 
 ```mermaid
 flowchart LR
-    User[Browser] --> CF[CloudFront, HTTPS]
-    CF -->|pages, /api| EB[Beanstalk app]
-    CF -->|app doesn't answer| API[API Gateway]
-    CF -->|/_wake/*| API
+    User[Browser] -->|launcher link| API[API Gateway]
     API --> Fn[Lambda cloud-dev-portal-mode]
+    Fn -->|awake: forward| EB[Beanstalk app]
     Timer[EventBridge, every 15 min] --> Fn
     Fn -->|start / stop| Aurora[(Aurora)]
     Fn -->|instances 1 / 0| EB
     Fn <--> SSM[SSM Parameter Store: mode]
 ```
 
-- **CloudFront** is the portal's address from now on (it also gives HTTPS). It sends each page to the app; when the app doesn't answer within 3 seconds, it shows the waking-up page instead.
-- **The waking-up page** asks the Lambda function to start Aurora and the Beanstalk instance, checks every 10 seconds, and opens the portal when both are up.
+- **The launcher link** is the API Gateway address. Share it instead of the Beanstalk address. Opening it while the portal is awake forwards straight to the portal. While it sleeps, it shows the waking-up page.
+- **The waking-up page** asks the Lambda function to start Aurora and the Beanstalk instance, checks every 10 seconds, and forwards to the portal when both are up.
 - **EventBridge** runs the function every 15 minutes. In hibernate mode it asks the portal how long it has been idle (`/api/health` reports it) and puts it to sleep after 30 minutes.
 - **The mode** is kept in SSM Parameter Store, `/cloud-dev-portal/mode`.
 - The code: [infra/portal_mode/](../infra/portal_mode/) (the function and the waking-up page; [infra/portal_mode.zip](../infra/portal_mode.zip) is the same, ready to upload, rebuilt with `python scripts/build_lambda_zip.py`), [infra/sleep-wake.yaml](../infra/sleep-wake.yaml) (CloudFormation), [scripts/portal_mode.py](../scripts/portal_mode.py).
 
+> **Why not CloudFront?** CloudFront could show the waking-up page at the portal's own address, and give it HTTPS, so nobody would need a separate link. AWS Academy Learner Lab doesn't allow CloudFront: every call is refused (`not authorized to perform: cloudfront:ListDistributions … because no identity-based policy allows`). The launcher link does the same job with API Gateway, which the lab allows. The one difference: opening the Beanstalk address directly while the portal sleeps just fails, so share the launcher link.
+
 ### Two ways to set it up
 
-The same five pieces can be built two ways. Both give the same result; pick one.
+The same four pieces can be built two ways. Both give the same result; pick one.
 
 - **[Option A: by hand in the console](#option-a-set-it-up-by-hand-in-the-console)**: about an hour. You create each piece yourself and see what it does and how they connect. Best for learning.
 - **[Option B: with CloudFormation](#option-b-set-it-up-with-cloudformation)**: about 15 minutes. One template ([infra/sleep-wake.yaml](../infra/sleep-wake.yaml)) creates all of it and deletes it again in one step. Infrastructure as code.
 
-Before either: the Beanstalk environment works (step 6), and you have its **name** and **domain** from its page, e.g. `cloud-dev-portal-env` and `cloud-dev-portal.us-east-1.elasticbeanstalk.com`. The steps below write them as `<environment name>` and `<environment domain>`.
+Before either: the Beanstalk environment works (step 6), and you have its **name** from its page, e.g. `cloud-dev-portal-env`. The steps below write it as `<environment name>`.
 
 ### Option A: set it up by hand in the console
 
@@ -222,12 +222,11 @@ You build the pieces in the order they depend on each other: the function first,
 
 | Step | Piece | Its job |
 | --- | --- | --- |
-| A1 | Lambda function | Does the work: switches modes, starts and stops Aurora and the instance, serves the waking-up page |
+| A1 | Lambda function | Does the work: switches modes, starts and stops Aurora and the instance, answers the launcher link |
 | A2 | SSM parameter | Remembers the current mode between runs |
 | A3 | EventBridge rule | Runs the function every 15 minutes to put an idle portal to sleep |
-| A4 | API Gateway | Lets CloudFront reach the function over HTTPS |
-| A5 | CloudFront | The portal's public address: shows the app, or the waking-up page when the app doesn't answer |
-| A6 | Finishing | Points the app at its new address; saves the switches |
+| A4 | API Gateway | The launcher link: lets a browser reach the function over HTTPS |
+| A5 | Finishing | Saves the switches; tests the whole system |
 
 #### A1. Lambda function
 
@@ -292,51 +291,13 @@ API Gateway → **HTTP API** → **Build**:
 2. Routes: method **ANY**, resource path **`$default`** (one route catches every path: the page and its `/_wake/...` calls) → **Next**.
 3. Stages: **`$default`**, **Auto-deploy** on → **Next** → **Create**.
 4. Left menu → **Protect** → **Throttling** → edit the `$default` stage: rate limit **5**, burst limit **10**. Anyone who finds the address can call it; this caps how often.
-5. Copy the API's **Invoke URL**, e.g. `https://abc123defg.execute-api.us-east-1.amazonaws.com`. A5 needs its domain part: `abc123defg.execute-api.us-east-1.amazonaws.com`.
+5. Copy the API's **Invoke URL**, e.g. `https://abc123defg.execute-api.us-east-1.amazonaws.com`. This is the **launcher link**: share it instead of the Beanstalk address.
 
-**Checkpoint.** Open the Invoke URL in a browser: the **Gargantua** waking-up page appears. Since the portal is awake, it says straight away that the portal is up, with a link to the home page (the link doesn't work from this address yet); that's expected.
+**Checkpoint.** Open the launcher link in a browser: since the portal is awake, it forwards straight to the portal's sign-in page (the address bar changes to the Beanstalk address).
 
-#### A5. CloudFront
+#### A5. Finishing
 
-CloudFront puts the two together. For every page it tries the app first and, when the app doesn't answer within 3 seconds or answers with a server error, shows the waking-up page instead. This is called an **origin group** (an origin is where CloudFront fetches content from).
-
-1. CloudFront → **Create distribution**. If it offers a plan (Free / Pay as you go), choose **Pay as you go**.
-2. **Origin**, the app:
-   - Origin domain: type **`<environment domain>`** (it isn't in the list, since Beanstalk isn't an S3 bucket or load balancer here)
-   - Protocol: **HTTP only**, HTTP port **80**
-   - Name: **`app`**
-   - Additional settings: Connection attempts **1**, Connection timeout **3**. While asleep the app doesn't answer at all; this makes CloudFront give up after 3 seconds instead of 30.
-3. **Default cache behavior**:
-   - Viewer protocol policy: **Redirect HTTP to HTTPS**
-   - Allowed HTTP methods: **GET, HEAD, OPTIONS**
-   - Cache key and origin requests: **Cache policy and origin request policy** → Cache policy **CachingDisabled**, Origin request policy **AllViewerExceptHostHeader** (the portal's pages are personal; nothing may be cached)
-4. **Web Application Firewall**: **Do not enable security protections**.
-5. Settings: Price class **Use only North America and Europe** (cheapest). Tags: `Project = cloud-dev-portal`, `Environment = dev`. **Create distribution**.
-6. Second origin, the waking-up page: the distribution → **Origins** → **Create origin**:
-   - Origin domain: the API's domain from A4 (without `https://`)
-   - Protocol: **HTTPS only**
-   - Name: **`wake`** → **Create origin**
-7. The origin group: **Origins** → **Create origin group**:
-   - Origins: add **`app`**, then **`wake`** (the order matters: app first)
-   - Name: **`app-or-wake`**
-   - Failover criteria: tick **500, 502, 503, 504** → **Create origin group**
-8. **Behaviors** tab, three rules for which path goes where:
-
-| Path pattern | Origin | Allowed methods | Why |
-| --- | --- | --- | --- |
-| Default (`*`): **Edit** it | `app-or-wake` | GET, HEAD, OPTIONS | Pages: the app, or the waking-up page |
-| `/api/*`: **Create behavior** | `app` | GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE | The portal's own calls. CloudFront doesn't allow POST on a behavior with an origin group, so these skip it |
-| `/_wake/*`: **Create behavior** | `wake` | GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE | The waking-up page's calls to the function |
-
-   For the two new behaviors, use the same settings as the default: **Redirect HTTP to HTTPS**, **CachingDisabled**, **AllViewerExceptHostHeader**.
-9. Wait until **Last modified** shows a date instead of *Deploying* (5 to 15 minutes). Copy the **Distribution domain name**, e.g. `d1a2b3c4d5e6f7.cloudfront.net`.
-
-**Checkpoint.** Open `https://<distribution domain>`: the portal's sign-in page, now over HTTPS.
-
-#### A6. Finishing
-
-1. Beanstalk → your environment → **Configuration** → **Updates, monitoring, and logging** → **Edit** → Environment properties: add **`PUBLIC_BASE_URL`** = `https://<distribution domain>` → **Apply**. Links in emails now point to this address. Use and share only this address from now on.
-2. Lambda → `cloud-dev-portal-mode` → **Test** tab: save three more test events. These are your switches.
+Lambda → `cloud-dev-portal-mode` → **Test** tab: save three more test events. These are your switches.
 
 | Event name | Event JSON |
 | --- | --- |
@@ -348,14 +309,14 @@ CloudFront puts the two together. For every page it tries the app first and, whe
 
 1. Run the **`hibernate`** event. The result shows `"app_instances": 0`.
 2. Wait until RDS shows `portal-db` as **Stopped** (about 5 minutes) and EC2 shows no running instance for the environment.
-3. Open `https://<distribution domain>`: the waking-up page appears, its two dots turn orange, then green after 5 to 10 minutes, and the portal opens by itself.
+3. Open the launcher link: the waking-up page appears, its two dots turn orange, then green after 5 to 10 minutes, and it forwards to the portal by itself.
 4. Leave it unused: within 45 minutes (30 idle minutes plus up to 15 until the next tick) Aurora stops again.
 
 ### Option B: set it up with CloudFormation
 
 
 1. Put the lab's credentials in `~/.aws/credentials` (see [Using the AWS CLI](#using-the-aws-cli-from-your-computer)).
-2. Have the environment's name and domain at hand (see [Two ways to set it up](#two-ways-to-set-it-up)).
+2. Have the environment's name at hand (see [Two ways to set it up](#two-ways-to-set-it-up)).
 3. From the project folder, upload the function's code (to your docs bucket, under `deploy/`) and create the stack:
 
 ```bash
@@ -363,12 +324,11 @@ aws cloudformation package --template-file infra/sleep-wake.yaml --s3-bucket <yo
 ```
 
 ```bash
-aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud-dev-portal-modes --parameter-overrides EnvironmentName=<environment name> EnvironmentCname=<environment domain>
+aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud-dev-portal-modes --parameter-overrides EnvironmentName=<environment name>
 ```
 
-   CloudFront takes 5 to 15 minutes. Then CloudFormation → `cloud-dev-portal-modes` → **Outputs** shows `PortalUrl` (`https://dxxxx.cloudfront.net`).
-4. Beanstalk → Configuration → Environment properties: set `PUBLIC_BASE_URL` to that `PortalUrl`. Share and use only this address from now on.
-5. Lambda → `cloud-dev-portal-mode` → **Test** tab: save three test events:
+   It takes a minute or two. Then CloudFormation → `cloud-dev-portal-modes` → **Outputs** shows `LauncherUrl`, the launcher link (`https://abc123defg.execute-api.us-east-1.amazonaws.com`). Share it instead of the Beanstalk address.
+4. Lambda → `cloud-dev-portal-mode` → **Test** tab: save three test events:
 
 | Event name | Event JSON |
 | --- | --- |
@@ -381,16 +341,16 @@ aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud
 - **In the console:** Lambda → `cloud-dev-portal-mode` → Test → choose the event → **Test**. The result shows the state (`database`, `app_instances`, `ready`).
 - **From the terminal:** `python scripts/portal_mode.py active` (or `hibernate`, `wake`, `status`).
 - **Presentation day:** switch to `active` at least 15 minutes before you start; back to `hibernate` afterwards.
-- **Development day:** stay in `hibernate`. Open the portal and wait on the waking-up page, or run `wake` while you get ready.
+- **Development day:** stay in `hibernate`. Open the launcher link and wait on the waking-up page, or run `wake` while you get ready.
 
 ### Things to know
 
-- While asleep, Beanstalk shows the environment as **Severe** or **No data**: expected, it has no instance.
+- While asleep, Beanstalk shows the environment as **Severe** or **No data**: expected, it has no instance. Its address doesn't answer; use the launcher link.
 - **Wake it before deploying a new version.** A deploy to a sleeping environment fails.
 - Each wake builds the app on a fresh instance (the instance is removed while asleep), which takes about as long as Aurora's start, so the two overlap. A later improvement: build the image once into ECR so the instance only downloads it.
 - The function's logs are in CloudWatch → Log groups → `/aws/lambda/cloud-dev-portal-mode`.
 - If a switch fails with `AccessDenied`, LabRole doesn't allow that action in your course (`rds:StartDBCluster`/`StopDBCluster`, `autoscaling:UpdateAutoScalingGroup`, `elasticbeanstalk:DescribeEnvironmentResources`, `ssm:PutParameter`). Then stop and start Aurora by hand as in [Saving budget](#saving-budget).
-- To remove it all: with Option B, CloudFormation → `cloud-dev-portal-modes` → **Delete**. With Option A, delete the pieces in reverse order: disable and delete the CloudFront distribution (it must be disabled first, which takes a few minutes), then the API, the EventBridge rule, the parameter and the function. The portal stays reachable at its Beanstalk address.
+- To remove it all: with Option B, CloudFormation → `cloud-dev-portal-modes` → **Delete**. With Option A, delete the pieces in reverse order: the API, the EventBridge rule, the parameter and the function. The portal stays reachable at its Beanstalk address.
 
 ## Using the AWS CLI from your computer
 

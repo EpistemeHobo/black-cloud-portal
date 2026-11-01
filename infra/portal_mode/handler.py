@@ -9,8 +9,10 @@ One Lambda function does all of it, depending on what calls it:
 - You (Lambda console test event or scripts/portal_mode.py):
   {"mode": "active"}, {"mode": "hibernate"}, {"action": "wake"}, {"action": "status"}
 - EventBridge, every 15 minutes: {"action": "tick"}, which sleeps an idle portal
-- API Gateway, behind CloudFront: the "waking up" page shown while the portal
-  sleeps, and the /_wake/start and /_wake/status calls that page makes
+- API Gateway: its address is the portal's launcher link. Opening it forwards to
+  the portal when it's awake, or shows the "waking up" page, which wakes it
+  through /_wake/start and forwards when it's ready. (Learner Lab doesn't allow
+  CloudFront, which could have shown that page at the portal's own address.)
 
 The mode and the time of the last wake are kept in SSM Parameter Store.
 """
@@ -84,6 +86,7 @@ def status() -> dict:
     db = db_status()
     return {
         "mode": get_param("mode", HIBERNATE),
+        "app_url": app_url(),
         "database": db,
         "app_instances": app_instances(group),
         "app_answers": idle is not None,
@@ -148,8 +151,9 @@ def set_mode(mode: str) -> dict:
 
 # ---------- Entry point ----------
 
-def http_response(code: int, body: str, content_type: str) -> dict:
-    return {"statusCode": code, "headers": {"Content-Type": content_type, "Cache-Control": "no-store"}, "body": body}
+def http_response(code: int, body: str, content_type: str, **headers: str) -> dict:
+    return {"statusCode": code, "body": body,
+            "headers": {"Content-Type": content_type, "Cache-Control": "no-store", **headers}}
 
 
 def handle_http(event: dict) -> dict:
@@ -159,8 +163,10 @@ def handle_http(event: dict) -> dict:
         return http_response(200, json.dumps(wake()), "application/json")
     if path == "/_wake/status":
         return http_response(200, json.dumps(status()), "application/json")
-    # Any other path: CloudFront came here because the portal didn't answer.
-    # 503 so nothing treats the page as the real one.
+    # The launcher link: straight on to the portal when it's up, otherwise the
+    # waking-up page (503, so nothing treats it as the real one).
+    if app_idle_seconds() is not None and db_status() == "available":
+        return http_response(302, "", "text/plain", Location=app_url())
     return http_response(503, WAKE_PAGE, "text/html; charset=utf-8")
 
 

@@ -1,17 +1,15 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Cloud Developer Portal: active and hibernate modes. CloudFront in front of the
-  Beanstalk app shows a "waking up" page while it sleeps; one Lambda function
-  switches modes, wakes the portal on a visit and puts it to sleep when idle.
-  Deploy steps: docs/aws-learner-lab.md, "Active and hibernate modes".
+  Cloud Developer Portal: active and hibernate modes. One Lambda function switches
+  modes, puts the portal to sleep when idle, and behind API Gateway serves the
+  launcher link, which wakes the portal and forwards to it. (No CloudFront:
+  Learner Lab doesn't allow it.) Deploy steps: docs/aws-learner-lab.md,
+  "Active and hibernate modes".
 
 Parameters:
   EnvironmentName:
     Type: String
     Description: The Beanstalk environment's name, e.g. Cloud-dev-portal-env
-  EnvironmentCname:
-    Type: String
-    Description: The Beanstalk environment's domain, e.g. cloud-dev-portal-env.eba-abcd1234.us-east-1.elasticbeanstalk.com
   DbClusterId:
     Type: String
     Default: portal-db
@@ -74,8 +72,8 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt TickRule.Arn
 
-  # The waking-up page and its /_wake calls. CloudFront is the only caller in
-  # practice; the throttle keeps anyone from running the function up.
+  # The launcher link: forwards to the portal, or shows the waking-up page and
+  # its /_wake calls. Anyone with the link can call it; the throttle caps how often.
   WakeApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
@@ -112,71 +110,9 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WakeApi}/*
 
-  # Pages go to the app, or to the waking-up page when the app doesn't answer.
-  # CloudFront fails over only for GET/HEAD/OPTIONS, and rejects other methods on
-  # a behavior with an origin group, so /api/* (which posts) goes to the app directly.
-  Distribution:
-    Type: AWS::CloudFront::Distribution
-    Properties:
-      DistributionConfig:
-        Comment: Cloud Developer Portal
-        Enabled: true
-        HttpVersion: http2
-        PriceClass: PriceClass_100
-        Origins:
-          - Id: app
-            DomainName: !Ref EnvironmentCname
-            # Asleep, the app doesn't answer at all: give up after 3 seconds, not 30.
-            ConnectionAttempts: 1
-            ConnectionTimeout: 3
-            CustomOriginConfig:
-              HTTPPort: 80
-              OriginProtocolPolicy: http-only
-          - Id: wake
-            DomainName: !Sub ${WakeApi}.execute-api.${AWS::Region}.amazonaws.com
-            CustomOriginConfig:
-              OriginProtocolPolicy: https-only
-              OriginSSLProtocols: [TLSv1.2]
-        OriginGroups:
-          Quantity: 1
-          Items:
-            - Id: app-or-wake
-              FailoverCriteria:
-                StatusCodes: {Quantity: 4, Items: [500, 502, 503, 504]}
-              Members:
-                Quantity: 2
-                Items: [{OriginId: app}, {OriginId: wake}]
-        DefaultCacheBehavior:
-          TargetOriginId: app-or-wake
-          ViewerProtocolPolicy: redirect-to-https
-          AllowedMethods: [GET, HEAD, OPTIONS]
-          CachedMethods: [GET, HEAD]
-          Compress: true
-          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # Managed-CachingDisabled
-          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # Managed-AllViewerExceptHostHeader
-        CacheBehaviors:
-          - PathPattern: /api/*
-            TargetOriginId: app
-            ViewerProtocolPolicy: redirect-to-https
-            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
-            CachedMethods: [GET, HEAD]
-            Compress: true
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-          - PathPattern: /_wake/*
-            TargetOriginId: wake
-            ViewerProtocolPolicy: redirect-to-https
-            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
-            CachedMethods: [GET, HEAD]
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-      Tags:
-        - {Key: Project, Value: cloud-dev-portal}
-        - {Key: Environment, Value: dev}
-
 Outputs:
-  PortalUrl:
-    Description: Open the portal here (HTTPS); set it as PUBLIC_BASE_URL in Beanstalk
-    Value: !Sub https://${Distribution.DomainName}
+  LauncherUrl:
+    Description: Share this link to open the portal; it wakes the portal first if it sleeps
+    Value: !GetAtt WakeApi.ApiEndpoint
   ModeFunctionName:
     Value: !Ref ModeFunction

@@ -41,24 +41,14 @@
 <script>
   // Asks the wake function to start anything still asleep, every 10 seconds
   // (asking again is harmless), until both parts are up; then opens the portal.
-  // Ready on the very first check means the portal was awake and this page itself
-  // failed: say so instead of reloading into the same error forever.
   const started = Date.now();
-  let sawAsleep = false;
   function show(id, state) { document.getElementById(id).className = state; }
   async function poll() {
     try {
       const s = await (await fetch("/_wake/start", { method: "POST" })).json();
       show("database", s.database === "available" ? "done" : "busy");
       show("app", s.app_answers ? "done" : "busy");
-      if (s.ready && sawAsleep) { location.reload(); return; }
-      if (s.ready) {
-        document.querySelector("p").innerHTML =
-          'พอร์ทัลทำงานอยู่ แต่หน้านี้เกิดข้อผิดพลาด <a href="/" style="color:#93c5fd">ไปหน้าแรก</a><br>' +
-          '<small>The portal is up, but this page failed. <a href="/" style="color:#93c5fd">Open the home page</a>.</small>';
-        return;
-      }
-      sawAsleep = true;
+      if (s.ready) { location.href = s.app_url; return; }
     } catch (e) { /* try again next time */ }
     const minutes = Math.floor((Date.now() - started) / 60000);
     document.getElementById("elapsed").textContent = `ผ่านไป ${minutes} นาที · ${minutes} min elapsed`;
