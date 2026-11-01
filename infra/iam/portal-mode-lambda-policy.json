@@ -1,0 +1,45 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StartAndStopOnlyThisCluster",
+      "Effect": "Allow",
+      "Action": ["rds:DescribeDBClusters", "rds:StartDBCluster", "rds:StopDBCluster"],
+      "Resource": "arn:aws:rds:us-east-1:ACCOUNT_ID:cluster:portal-db"
+    },
+    {
+      "Sid": "ResizeOnlyThisEnvironmentsGroup",
+      "Effect": "Allow",
+      "Action": "autoscaling:UpdateAutoScalingGroup",
+      "Resource": "*",
+      "Condition": {"StringEquals": {"aws:ResourceTag/elasticbeanstalk:environment-name": "ENVIRONMENT_NAME"}}
+    },
+    {
+      "Sid": "ReadTheEnvironment",
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:DescribeAutoScalingGroups",
+        "elasticbeanstalk:DescribeEnvironments",
+        "elasticbeanstalk:DescribeEnvironmentResources",
+        "cloudformation:DescribeStackResource",
+        "cloudformation:DescribeStackResources"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "OnlyItsOwnState",
+      "Effect": "Allow",
+      "Action": ["ssm:GetParameter", "ssm:PutParameter"],
+      "Resource": [
+        "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/mode",
+        "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/woken-at"
+      ]
+    },
+    {
+      "Sid": "ItsOwnLogs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/aws/lambda/cloud-dev-portal-mode:*"
+    }
+  ]
+}

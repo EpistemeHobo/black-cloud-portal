@@ -46,9 +46,9 @@
   async function poll() {
     try {
       const s = await (await fetch("/_wake/start", { method: "POST" })).json();
-      show("database", s.database === "available" ? "done" : "busy");
-      show("app", s.app_answers ? "done" : "busy");
-      if (s.ready) { location.href = s.app_url; return; }
+      show("database", s.database_ready ? "done" : "busy");
+      show("app", s.app_ready ? "done" : "busy");
+      if (s.ready) { location.href = "/"; return; }
     } catch (e) { /* try again next time */ }
     const minutes = Math.floor((Date.now() - started) / 60000);
     document.getElementById("elapsed").textContent = `ผ่านไป ${minutes} นาที · ${minutes} min elapsed`;

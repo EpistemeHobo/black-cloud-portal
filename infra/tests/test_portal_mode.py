@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "portal_mode"))
 import handler  # noqa: E402
 
 GROUP = "awseb-cloud-dev-portal-asg"
-APP_DOMAIN = "cloud-dev-portal.us-east-1.elasticbeanstalk.com"
 NOW = 1_800_000_000
 
 
@@ -40,7 +39,6 @@ class FakeAws:
         beanstalk = MagicMock()
         beanstalk.describe_environment_resources.return_value = {
             "EnvironmentResources": {"AutoScalingGroups": [{"Name": GROUP}]}}
-        beanstalk.describe_environments.return_value = {"Environments": [{"CNAME": APP_DOMAIN}]}
         ssm = MagicMock()
         ssm.exceptions.ParameterNotFound = KeyError
         ssm.get_parameter.side_effect = lambda Name: {"Parameter": {"Value": self.params[Name]}}
@@ -128,19 +126,20 @@ def http(method, path):
 def test_the_launcher_link(monkeypatch):
     # Asleep: the waking-up page; opening it changes nothing until the page asks.
     aws = FakeAws(db="stopped", instances=0).install(monkeypatch)
-    page = handler.lambda_handler(http("GET", "/"), None)
+    page = handler.lambda_handler(http("GET", "/launch"), None)
     assert page["statusCode"] == 503 and "Waking up" in page["body"] and aws.calls == []
 
     started = handler.lambda_handler(http("POST", "/_wake/start"), None)
     assert started["statusCode"] == 200 and aws.calls == ["start_db", "scale_1"]
-    assert json.loads(started["body"])["ready"] is False
+    # Anyone can call these: only the three answers the page needs, nothing about the setup.
+    assert json.loads(started["body"]) == {"database_ready": False, "app_ready": False, "ready": False}
 
-    # Awake: the page is told where to go, and the link itself forwards there.
+    # Awake: the link forwards to the portal on the same (HTTPS) address.
     aws.db, aws.idle = "available", 5
-    state = json.loads(handler.lambda_handler(http("GET", "/_wake/status"), None)["body"])
-    assert state["ready"] is True and state["app_url"] == f"http://{APP_DOMAIN}"
-    forward = handler.lambda_handler(http("GET", "/"), None)
-    assert forward["statusCode"] == 302 and forward["headers"]["Location"] == f"http://{APP_DOMAIN}"
+    assert json.loads(handler.lambda_handler(http("GET", "/_wake/status"), None)["body"])["ready"] is True
+    forward = handler.lambda_handler(http("GET", "/launch"), None)
+    assert forward["statusCode"] == 302 and forward["headers"]["Location"] == "/"
+    assert handler.lambda_handler(http("GET", "/other"), None)["statusCode"] == 404
 
 
 def test_the_committed_zip_matches_the_code():

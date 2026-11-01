@@ -1,15 +1,24 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Cloud Developer Portal: active and hibernate modes. One Lambda function switches
-  modes, puts the portal to sleep when idle, and behind API Gateway serves the
-  launcher link, which wakes the portal and forwards to it. (No CloudFront:
-  Learner Lab doesn't allow it.) Deploy steps: docs/aws-learner-lab.md,
+  Cloud Developer Portal: active and hibernate modes, and the portal's HTTPS
+  address. API Gateway passes the portal's pages to Beanstalk (adding a secret
+  header the app checks) and sends /launch and /_wake/* to one Lambda function,
+  which also switches modes and puts the portal to sleep when idle. (No
+  CloudFront: Learner Lab doesn't allow it.) Deploy steps: docs/aws-learner-lab.md,
   "Active and hibernate modes".
 
 Parameters:
   EnvironmentName:
     Type: String
     Description: The Beanstalk environment's name, e.g. Cloud-dev-portal-env
+  EnvironmentCname:
+    Type: String
+    Description: The Beanstalk environment's domain, e.g. cloud-dev-portal.us-east-1.elasticbeanstalk.com
+  OriginVerifySecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: The same value as the app's ORIGIN_VERIFY_SECRET; requests without it are refused by the app
   DbClusterId:
     Type: String
     Default: portal-db
@@ -95,14 +104,48 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt NightlyRule.Arn
 
-  # The launcher link: forwards to the portal, or shows the waking-up page and
-  # its /_wake calls. Anyone with the link can call it; the throttle caps how often.
+  # The portal's HTTPS address. Its pages go to Beanstalk; /launch (the link to
+  # share) and the waking-up page's /_wake calls go to the function.
   WakeApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
       Name: cloud-dev-portal-wake
       ProtocolType: HTTP
       Tags: {Project: cloud-dev-portal, Environment: dev}
+  # Passes requests on to the app over HTTP, overwriting X-Origin-Verify so the
+  # app knows they came through here (a browser can't fake it).
+  AppIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WakeApi
+      IntegrationType: HTTP_PROXY
+      IntegrationMethod: ANY
+      IntegrationUri: !Sub http://${EnvironmentCname}/{proxy}
+      PayloadFormatVersion: "1.0"
+      RequestParameters:
+        overwrite:header.x-origin-verify: !Ref OriginVerifySecret
+  AppRootIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WakeApi
+      IntegrationType: HTTP_PROXY
+      IntegrationMethod: ANY
+      IntegrationUri: !Sub http://${EnvironmentCname}/
+      PayloadFormatVersion: "1.0"
+      RequestParameters:
+        overwrite:header.x-origin-verify: !Ref OriginVerifySecret
+  AppRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WakeApi
+      RouteKey: ANY /{proxy+}
+      Target: !Sub integrations/${AppIntegration}
+  AppRootRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WakeApi
+      RouteKey: ANY /
+      Target: !Sub integrations/${AppRootIntegration}
   WakeIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
@@ -110,21 +153,33 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ModeFunction.Arn
       PayloadFormatVersion: "2.0"
-  WakeRoute:
+  LaunchRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref WakeApi
-      RouteKey: $default
+      RouteKey: ANY /launch
       Target: !Sub integrations/${WakeIntegration}
+  WakeCallsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WakeApi
+      RouteKey: ANY /_wake/{proxy+}
+      Target: !Sub integrations/${WakeIntegration}
+  # A page load fetches ~20 files, so the portal gets room; the routes that run
+  # the function (and can start servers) are kept tight.
   WakeStage:
     Type: AWS::ApiGatewayV2::Stage
+    DependsOn: [LaunchRoute, WakeCallsRoute]
     Properties:
       ApiId: !Ref WakeApi
       StageName: $default
       AutoDeploy: true
       DefaultRouteSettings:
-        ThrottlingRateLimit: 5
-        ThrottlingBurstLimit: 10
+        ThrottlingRateLimit: 50
+        ThrottlingBurstLimit: 100
+      RouteSettings:
+        ANY /launch: {ThrottlingRateLimit: 5, ThrottlingBurstLimit: 10}
+        ANY /_wake/{proxy+}: {ThrottlingRateLimit: 5, ThrottlingBurstLimit: 10}
   WakePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -134,8 +189,11 @@ Resources:
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WakeApi}/*
 
 Outputs:
-  LauncherUrl:
-    Description: Share this link to open the portal; it wakes the portal first if it sleeps
+  PortalUrl:
+    Description: The portal's HTTPS address; set it as PUBLIC_BASE_URL in Beanstalk
     Value: !GetAtt WakeApi.ApiEndpoint
+  LauncherUrl:
+    Description: The link to share; it wakes the portal first if it sleeps
+    Value: !Sub ${WakeApi.ApiEndpoint}/launch
   ModeFunctionName:
     Value: !Ref ModeFunction

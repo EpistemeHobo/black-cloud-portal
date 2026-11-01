@@ -9,10 +9,11 @@ One Lambda function does all of it, depending on what calls it:
 - You (Lambda console test event or scripts/portal_mode.py):
   {"mode": "active"}, {"mode": "hibernate"}, {"action": "wake"}, {"action": "status"}
 - EventBridge, every 15 minutes: {"action": "tick"}, which sleeps an idle portal
-- API Gateway: its address is the portal's launcher link. Opening it forwards to
+- API Gateway, the portal's HTTPS address: it passes the portal's own pages to
+  Beanstalk, and sends two paths here. /launch, the link to share, forwards to
   the portal when it's awake, or shows the "waking up" page, which wakes it
   through /_wake/start and forwards when it's ready. (Learner Lab doesn't allow
-  CloudFront, which could have shown that page at the portal's own address.)
+  CloudFront, which could have shown that page in place of any page.)
 
 The mode and the time of the last wake are kept in SSM Parameter Store.
 """
@@ -86,7 +87,6 @@ def status() -> dict:
     db = db_status()
     return {
         "mode": get_param("mode", HIBERNATE),
-        "app_url": app_url(),
         "database": db,
         "app_instances": app_instances(group),
         "app_answers": idle is not None,
@@ -156,18 +156,26 @@ def http_response(code: int, body: str, content_type: str, **headers: str) -> di
             "headers": {"Content-Type": content_type, "Cache-Control": "no-store", **headers}}
 
 
+def public_status(state: dict) -> dict:
+    """What the waking-up page needs, and nothing more: anyone can call it."""
+    return {"database_ready": state["database"] == "available",
+            "app_ready": state["app_answers"], "ready": state["ready"]}
+
+
 def handle_http(event: dict) -> dict:
     method = event["requestContext"]["http"]["method"]
     path = event.get("rawPath", "/")
     if path == "/_wake/start" and method == "POST":
-        return http_response(200, json.dumps(wake()), "application/json")
+        return http_response(200, json.dumps(public_status(wake())), "application/json")
     if path == "/_wake/status":
-        return http_response(200, json.dumps(status()), "application/json")
-    # The launcher link: straight on to the portal when it's up, otherwise the
-    # waking-up page (503, so nothing treats it as the real one).
-    if app_idle_seconds() is not None and db_status() == "available":
-        return http_response(302, "", "text/plain", Location=app_url())
-    return http_response(503, WAKE_PAGE, "text/html; charset=utf-8")
+        return http_response(200, json.dumps(public_status(status())), "application/json")
+    if path == "/launch":
+        # On to the portal, on this same address, when it's up; otherwise the
+        # waking-up page (503, so nothing treats it as the real one).
+        if app_idle_seconds() is not None and db_status() == "available":
+            return http_response(302, "", "text/plain", Location="/")
+        return http_response(503, WAKE_PAGE, "text/html; charset=utf-8")
+    return http_response(404, "Not found", "text/plain")
 
 
 def lambda_handler(event: dict, _context) -> dict:

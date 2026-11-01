@@ -106,6 +106,11 @@ KB_BASE_URL = os.environ.get("KB_BASE_URL", "").rstrip("/")
 # A relative path is taken from the backend folder, whatever the working directory.
 FRONTEND_DIR = BACKEND_DIR / os.environ.get("FRONTEND_DIR", "static_frontend")
 
+# Set when the portal sits behind a proxy (API Gateway on AWS) that adds this
+# value as the X-Origin-Verify header: requests without it are refused, so
+# nobody can reach the app around the proxy and its HTTPS. Empty: no check.
+ORIGIN_VERIFY_SECRET = os.environ.get("ORIGIN_VERIFY_SECRET", "")
+
 # Markdown files attached to the handover guide go to this S3 bucket (see doc_store.py).
 # Empty: they stay in the database, as on a developer's machine. Credentials come from
 # the usual AWS chain: the instance profile on EC2/Beanstalk, ~/.aws/credentials locally.

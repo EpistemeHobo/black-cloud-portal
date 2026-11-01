@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "GuideFilesOnly",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::BUCKET_NAME/systems/*"
+    },
+    {
+      "Sid": "ItsOwnSecrets",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameters",
+      "Resource": [
+        "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/db-password",
+        "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/jwt-secret-key",
+        "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/origin-verify-secret"
+      ]
+    },
+    {
+      "Sid": "DecryptThemThroughSsmOnly",
+      "Effect": "Allow",
+      "Action": "kms:Decrypt",
+      "Resource": "*",
+      "Condition": {"StringEquals": {"kms:ViaService": "ssm.us-east-1.amazonaws.com"}}
+    }
+  ]
+}

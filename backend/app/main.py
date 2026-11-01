@@ -1,8 +1,11 @@
+import hmac
 import logging
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -43,6 +46,15 @@ if config.ALLOWED_ORIGINS:
 
 
 @app.middleware("http")
+async def require_proxy(request: Request, call_next):
+    # The health check stays open: Beanstalk and the sleep job call it directly.
+    if config.ORIGIN_VERIFY_SECRET and request.url.path != "/api/health" and not hmac.compare_digest(
+            request.headers.get("x-origin-verify", ""), config.ORIGIN_VERIFY_SECRET):
+        return JSONResponse({"detail": "เปิดพอร์ทัลผ่านที่อยู่ HTTPS ของพอร์ทัล"}, status_code=403)
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def track_activity(request: Request, call_next):
     # The health check doesn't count as someone using the portal; everything else
     # does. The sleep job (infra/portal_mode) reads this through /api/health.
@@ -67,10 +79,15 @@ for router in (auth.router, dashboard.router, meta.router, people.router, system
 
 
 class FrontendFiles(StaticFiles):
-    """Static files, plus one fix for Next.js 16's static export.
+    """Static files, plus two fixes.
 
-    The browser prefetches `__next.system.__PAGE__.txt`, but the export writes it
-    as `__next.system/__PAGE__.txt`. Without this, every link prefetch is a 404.
+    Next.js 16's static export: the browser prefetches `__next.system.__PAGE__.txt`,
+    but the export writes it as `__next.system/__PAGE__.txt`. Without this, every
+    link prefetch is a 404.
+
+    The redirect from `/system` to `/system/` is made relative: Starlette builds an
+    absolute URL from the Host header, which behind a proxy (API Gateway) is the
+    app's own http:// address and would send the browser off the HTTPS one.
     """
 
     async def get_response(self, path: str, scope):
@@ -78,6 +95,9 @@ class FrontendFiles(StaticFiles):
         suffix = ".__PAGE__.txt"
         if response.status_code == 404 and path.endswith(suffix):
             return await super().get_response(path[: -len(suffix)] + "/__PAGE__.txt", scope)
+        location = urlsplit(response.headers.get("location", ""))
+        if 300 <= response.status_code < 400 and location.netloc:
+            response.headers["location"] = urlunsplit(("", "", location.path or "/", location.query, ""))
         return response
 
 

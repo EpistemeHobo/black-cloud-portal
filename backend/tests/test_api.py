@@ -183,6 +183,7 @@ def test_history_includes_added_records(system, owner, other):
 
 
 def test_nextjs_prefetch_files_are_found(tmp_path):
+    from fastapi import FastAPI
     from app.main import FrontendFiles
     (tmp_path / "system" / "__next.system").mkdir(parents=True)
     (tmp_path / "system" / "__next.system" / "__PAGE__.txt").write_text("page")
@@ -202,3 +203,25 @@ def test_health_reports_idle_time_but_does_not_count_itself(monkeypatch):
     assert client.get("/api/health").json() == {"status": "ok", "idle_seconds": 3600}
     client.get("/api/meta")  # any other request is someone using the portal
     assert client.get("/api/health").json()["idle_seconds"] == 0
+
+
+def test_redirects_stay_relative_behind_a_proxy(tmp_path):
+    from fastapi import FastAPI
+    from app.main import FrontendFiles
+    (tmp_path / "system").mkdir()
+    (tmp_path / "system" / "index.html").write_text("page")
+    site = FastAPI()
+    site.mount("/", FrontendFiles(directory=tmp_path, html=True))
+    client = TestClient(site, base_url="http://app-behind-proxy.internal")
+    r = client.get("/system?id=APP-001", follow_redirects=False)
+    assert r.status_code == 307 and r.headers["location"] == "/system/?id=APP-001"
+
+
+def test_only_the_proxy_gets_in_when_a_secret_is_set(monkeypatch):
+    from app import config
+    monkeypatch.setattr(config, "ORIGIN_VERIFY_SECRET", "s3cret")
+    client = TestClient(app)
+    assert client.get("/api/meta").status_code == 403
+    assert client.get("/api/meta", headers={"X-Origin-Verify": "wrong"}).status_code == 403
+    assert client.get("/api/meta", headers={"X-Origin-Verify": "s3cret"}).status_code == 401  # through, not signed in
+    assert client.get("/api/health").status_code == 200  # Beanstalk and the sleep job call it directly

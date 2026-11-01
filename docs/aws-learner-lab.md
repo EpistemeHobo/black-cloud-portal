@@ -107,7 +107,7 @@ Elastic Beanstalk → **Create application**.
 **Step 2: Configure service access**
 
 - Service role: **Use an existing service role → LabRole**
-- EC2 key pair: `vockey` (optional, lets you SSH in)
+- EC2 key pair: **leave empty**. A key pair makes Beanstalk open SSH (port 22) to the whole internet; you get a shell through Session Manager instead, which needs no open port (step 7)
 - EC2 instance profile: **LabInstanceProfile**. This is what lets the app use S3 without keys.
 
 **Step 3: Networking, database and tags**
@@ -139,7 +139,7 @@ Elastic Beanstalk → **Create application**.
 | `SEED_ADMIN_EMAIL` | your email: the first admin |
 | `SEED_ADMIN_PASSWORD` | 12+ characters |
 
-> **In production:** these properties are stored in plain text, and anyone who can open the environment's configuration can read `DB_PASSWORD` and `JWT_SECRET_KEY`. That's acceptable in a lab account only you use. A real deployment keeps secrets in **AWS Secrets Manager** or an **SSM Parameter Store SecureString** (encrypted, hidden, versioned) and links them here through each row's **Source** dropdown, leaving only plain settings as text.
+> These start in plain text so the first deploy has nothing extra to go wrong: anyone who can open the environment's configuration can read `DB_PASSWORD` and `JWT_SECRET_KEY`, and the app signs in as Aurora's all-powerful master user. [Step 7](#7-security-hardening) fixes both once the portal works.
 
 **Step 6: Review → Submit.** The first launch takes about 10 minutes (it builds the image). When the environment shows **Ok**, open its URL (`cloud-dev-portal-env.eba-xxxx.us-east-1.elasticbeanstalk.com`) and sign in with the seed admin.
 
@@ -147,7 +147,7 @@ Then add one more property so links in emails point to the portal: `PUBLIC_BASE_
 
 **Health check:** Configuration → Instance traffic and scaling (with a load balancer: Processes) → set the health check path to `/api/health`.
 
-On every start, the container brings the Aurora tables up to date (`alembic upgrade head`) and loads the checklist standards. To add the four demo systems, connect to the instance (EC2 → the instance → Connect) and run:
+On every start, the container brings the Aurora tables up to date (`alembic upgrade head`) and loads the checklist standards. To add the four demo systems, open a shell on the instance (EC2 → the instance → **Connect** → **Session Manager** → **Connect**) and run:
 
 ```bash
 sudo docker exec $(sudo docker ps -q) python -m app.seed --demo
@@ -158,6 +158,84 @@ sudo docker exec $(sudo docker ps -q) python -m app.seed --demo
 1. Open a system → handover guide → attach a `.md` file.
 2. S3 → your bucket: the file is at `systems/<id>/<question>/<file>.md`. Replace it in the portal, then turn on **Show versions** in S3 to see both copies.
 3. Emails (sign-up verification, password reset) are in the log until Cognito replaces them: Beanstalk → **Logs → Request logs → Last 100 lines**.
+
+## 7. Security hardening
+
+The portal works; now take away everything it doesn't need. Two principles:
+
+- **Least privilege:** each part gets only the access its job needs, so a mistake or a break-in in one part can't reach further.
+- **No standing authority:** secrets and admin powers aren't left lying around (in plain text, in settings, on open ports) once their job is done.
+
+| # | Change | Before | After |
+| --- | --- | --- | --- |
+| 7a | No SSH | Port 22 open to the internet | Shell through Session Manager only |
+| 7b | The app's own database user | App signs in as Aurora's master user | `portal_app`, which owns only its own database |
+| 7c | Secrets in SSM | Passwords in plain text in Beanstalk | Encrypted SecureStrings, linked by name |
+| 7d | No seed admin password | Admin password kept in the configuration | Removed after the first sign-in |
+| 7e | S3 over HTTPS only | Bucket answers plain HTTP | Plain HTTP refused |
+| 7f | HTTPS for the browser | `http://` Beanstalk address | `https://` API Gateway address; the Beanstalk address refuses visitors |
+
+### 7a. Close SSH
+
+1. Beanstalk → your environment → **Configuration** → **Service access** → **Edit** → EC2 key pair: **remove it** (choose none) → **Apply**. Beanstalk replaces the instance (a few minutes) and removes its SSH rule.
+2. EC2 → **Security Groups** → the group whose name starts with `awseb-` and ends with your environment's ID: **Inbound rules** show only **HTTP 80**. If a rule for port 22 is still there, delete it.
+
+**A shell without SSH:** EC2 → the instance → **Connect** → **Session Manager** → **Connect**. It goes through the Systems Manager agent on the instance (LabInstanceProfile allows it), with no open port and no key file to lose.
+
+### 7b. The app's own database user
+
+The app signs in as `portal`, Aurora's master user, which may do anything to every database on the server. Give it a user that owns only its own database:
+
+1. Open a shell with Session Manager (7a) and run:
+
+```bash
+sudo docker exec $(sudo docker ps -q) python -m app.app_db_user --param /cloud-dev-portal/db-password
+```
+
+   It uses the app's current (master) settings to create the user **`portal_app`** and the database **`portal`**, which only `portal_app` may connect to. It creates the tables there as `portal_app`, copies every row across, and stores `portal_app`'s new password in SSM Parameter Store as an encrypted SecureString, without ever printing it. The output ends with `Password stored in SSM as /cloud-dev-portal/db-password (SecureString).` The old tables stay where they were, untouched.
+2. Don't apply anything yet: 7c links the new password.
+
+From now on the master password is needed by nobody but you, for running steps like this one. Keep it in a password manager, not in a file.
+
+### 7c. Secrets into SSM Parameter Store
+
+1. Systems Manager → **Parameter Store** → **Create parameter**: name **`/cloud-dev-portal/jwt-secret-key`**, type **SecureString** (KMS key: the default `alias/aws/ssm`), value: a new key from
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+2. Beanstalk → **Configuration** → **Updates, monitoring, and logging** → **Edit** → Environment properties. Change these rows:
+
+| Name | Source | Value |
+| --- | --- | --- |
+| `DB_USER` | Plain text | `portal_app` |
+| `DB_NAME` | Plain text | `portal` |
+| `DB_PASSWORD` | **SSM Parameter Store** | `arn:aws:ssm:us-east-1:<account id>:parameter/cloud-dev-portal/db-password` |
+| `JWT_SECRET_KEY` | **SSM Parameter Store** | `arn:aws:ssm:us-east-1:<account id>:parameter/cloud-dev-portal/jwt-secret-key` |
+
+   Your account ID is the 12-digit number in the top-right account menu. Beanstalk reads the values on the instance at each deploy, through the instance profile, so they never appear in the configuration.
+
+### 7d. Remove the seed admin password
+
+The admin account exists since the first start; the app needs `SEED_ADMIN_PASSWORD` only to create it. In the same properties form, **Remove** the `SEED_ADMIN_PASSWORD` row (keep `SEED_ADMIN_EMAIL`: it's the contact shown on the sign-in page). Keep the password in a password manager, and delete it from any local file such as `.env.beanstalk`.
+
+Now **Apply** 7b–7d together: one restart. The new session key signs everyone out once.
+
+**Checkpoint.** The portal works and you can sign in, with your systems still there. The environment's properties show no password in plain text.
+
+### 7e. S3 over HTTPS only
+
+S3 → your bucket → **Permissions** → **Bucket policy** → **Edit**: paste [infra/iam/docs-bucket-policy.json](../infra/iam/docs-bucket-policy.json) with `BUCKET_NAME` replaced by your bucket's name (twice) → **Save**. Any request that isn't encrypted is now refused; the app already uses HTTPS.
+
+### 7f. HTTPS for the browser
+
+The portal's own address is plain `http://`: passwords and session cookies would cross the network unencrypted. HTTPS comes with the API Gateway built in [Active and hibernate modes](#active-and-hibernate-modes): its `https://` address passes the portal's pages to Beanstalk, and the last step there locks the Beanstalk address so visitors can't go around it.
+
+### What the lab doesn't allow
+
+- **Least-privilege IAM roles.** Learner Lab can't create roles, so the app and the mode function run as `LabRole`, which may do much more than they need. [infra/iam/](../infra/iam/) has the exact policies each should have in a real account.
+- **Encryption all the way to the app.** The browser–AWS leg is HTTPS; API Gateway → Beanstalk stays HTTP. Closing it needs a private VPC link, which needs a load balancer and a certificate for a domain you own, neither available here.
 
 ## Deploying a new version
 
@@ -187,28 +265,29 @@ Two modes, switched with one click:
 | --- | --- | --- |
 | Aurora and the Beanstalk instance | Always on | Asleep when nobody uses the portal |
 | Goes to sleep | When you switch to hibernate, or at midnight at the latest (then it's in hibernate) | After 30 minutes without visitors (checked every 15 minutes), and at midnight |
-| Opening the site | Instant | Through the **launcher link**: while asleep it shows a "waking up" page, and forwards to the portal after 5–10 minutes |
+| Opening the site | Instant | Through the **launcher link** (`…/launch`): while asleep it shows a "waking up" page, and forwards to the portal after 5–10 minutes |
 | Cost | About $2.50 a day | Storage only while asleep |
 
 ```mermaid
 flowchart LR
-    User[Browser] -->|launcher link| API[API Gateway]
-    API --> Fn[Lambda cloud-dev-portal-mode]
-    Fn -->|awake: forward| EB[Beanstalk app]
+    User[Browser] -->|HTTPS| API[API Gateway: the portal's address]
+    API -->|pages, /api: HTTP + secret header| EB[Beanstalk app]
+    API -->|/launch, /_wake/*| Fn[Lambda cloud-dev-portal-mode]
     Timer[EventBridge, every 15 min] --> Fn
     Fn -->|start / stop| Aurora[(Aurora)]
     Fn -->|instances 1 / 0| EB
     Fn <--> SSM[SSM Parameter Store: mode]
 ```
 
-- **The launcher link** is the API Gateway address. Share it instead of the Beanstalk address. Opening it while the portal is awake forwards straight to the portal. While it sleeps, it shows the waking-up page.
+- **API Gateway is the portal's address** (`https://…execute-api…`). It passes the portal's pages to Beanstalk and adds a secret header; the app refuses requests without it, so the HTTPS address is the only way in ([7f](#7f-https-for-the-browser)).
+- **The launcher link** is that address plus `/launch`: share it. While the portal is awake it forwards straight to the portal; while it sleeps it shows the waking-up page.
 - **The waking-up page** asks the Lambda function to start Aurora and the Beanstalk instance, checks every 10 seconds, and forwards to the portal when both are up.
 - **EventBridge** runs the function every 15 minutes. In hibernate mode it asks the portal how long it has been idle (`/api/health` reports it) and puts it to sleep after 30 minutes. In active mode it only makes sure everything is still on.
 - **At midnight**, a second EventBridge rule switches to hibernate and stops everything, whatever the mode: a safety net in case active mode was left on after a presentation.
 - **The mode** is kept in SSM Parameter Store, `/cloud-dev-portal/mode`.
 - The code: [infra/portal_mode/](../infra/portal_mode/) (the function and the waking-up page; [infra/portal_mode.zip](../infra/portal_mode.zip) is the same, ready to upload, rebuilt with `python scripts/build_lambda_zip.py`), [infra/sleep-wake.yaml](../infra/sleep-wake.yaml) (CloudFormation), [scripts/portal_mode.py](../scripts/portal_mode.py).
 
-> **Why not CloudFront?** CloudFront could show the waking-up page at the portal's own address, and give it HTTPS, so nobody would need a separate link. AWS Academy Learner Lab doesn't allow CloudFront: every call is refused (`not authorized to perform: cloudfront:ListDistributions … because no identity-based policy allows`). The launcher link does the same job with API Gateway, which the lab allows. The one difference: opening the Beanstalk address directly while the portal sleeps just fails, so share the launcher link.
+> **Why not CloudFront?** CloudFront could give HTTPS and show the waking-up page in place of *any* page of a sleeping portal. AWS Academy Learner Lab doesn't allow CloudFront: every call is refused (`not authorized to perform: cloudfront:ListDistributions … because no identity-based policy allows`). API Gateway, which the lab allows, does both jobs here, with one difference: only `/launch` wakes the portal, so share that link.
 
 ### Two ways to set it up
 
@@ -228,8 +307,8 @@ You build the pieces in the order they depend on each other: the function first,
 | A1 | Lambda function | Does the work: switches modes, starts and stops Aurora and the instance, answers the launcher link |
 | A2 | SSM parameter | Remembers the current mode between runs |
 | A3 | EventBridge rules | Run the function every 15 minutes to put an idle portal to sleep, and at midnight to stop everything |
-| A4 | API Gateway | The launcher link: lets a browser reach the function over HTTPS |
-| A5 | Finishing | Saves the switches; tests the whole system |
+| A4 | API Gateway | The portal's HTTPS address: pages to the app, `/launch` and `/_wake/*` to the function |
+| A5 | Finishing | Locks the app to the HTTPS address; saves the switches; tests the whole system |
 
 #### A1. Lambda function
 
@@ -300,19 +379,39 @@ Rule schedules are in **UTC**: `0 17 * * ? *` means 17:00 UTC every day, which i
 
 #### A4. API Gateway
 
-API Gateway → **HTTP API** → **Build**:
+The API becomes the portal's front door: two routes go to the function, everything else to the app.
 
-1. Integrations: **Add integration** → **Lambda** → `cloud-dev-portal-mode`. API name: **`cloud-dev-portal-wake`** → **Next**.
-2. Routes: method **ANY**, resource path **`$default`** (one route catches every path: the page and its `/_wake/...` calls) → **Next**.
-3. Stages: **`$default`**, **Auto-deploy** on → **Next** → **Create**.
-4. Left menu → **Protect** → **Throttling** → edit the `$default` stage: rate limit **5**, burst limit **10**. Anyone who finds the address can call it; this caps how often.
-5. Copy the API's **Invoke URL**, e.g. `https://abc123defg.execute-api.us-east-1.amazonaws.com`. This is the **launcher link**: share it instead of the Beanstalk address.
+1. **A secret for the app.** API Gateway will add it to every request it passes on, and the app will refuse requests without it, so nobody can go around HTTPS. Make one:
 
-**Checkpoint.** Open the launcher link in a browser: since the portal is awake, it forwards straight to the portal's sign-in page (the address bar changes to the Beanstalk address).
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+   Systems Manager → Parameter Store → **Create parameter**: name **`/cloud-dev-portal/origin-verify-secret`**, type **SecureString**, value: the secret.
+2. API Gateway → **HTTP API** → **Build**:
+   - Integrations: **Add integration** → **Lambda** → `cloud-dev-portal-mode`. API name: **`cloud-dev-portal-wake`** → **Next**.
+   - Routes: **`ANY /launch`** and **`ANY /_wake/{proxy+}`**, both to the Lambda integration → **Next**.
+   - Stages: **`$default`**, **Auto-deploy** on → **Next** → **Create**.
+3. **Routes** → **Create**: **`ANY /{proxy+}`**. Select it → **Attach integration** → **Create and attach an integration**: type **HTTP URI**, method **ANY**, URL **`http://<environment domain>/{proxy}`** (e.g. `http://cloud-dev-portal.us-east-1.elasticbeanstalk.com/{proxy}`).
+4. **Routes** → **Create**: **`ANY /`**, attached the same way to a new HTTP URI integration with URL **`http://<environment domain>/`**.
+5. **Integrations** → each of the two HTTP URI integrations → **Parameter mapping** → **Create parameter mapping**: mapping type **All incoming requests**; parameter **`header.x-origin-verify`**, modification **Overwrite**, value: the secret from 1. ("Overwrite" also replaces any such header a visitor sends.)
+6. **Protect** → **Throttling**: the `$default` stage's default: rate **50**, burst **100** (a page load fetches about 20 files). Then **route-level** throttling for `ANY /launch` and `ANY /_wake/{proxy+}`: rate **5**, burst **10**: those can start servers, so anyone with the link gets only a little.
+7. Copy the API's **Invoke URL**, e.g. `https://abc123defg.execute-api.us-east-1.amazonaws.com`: the **portal's address**. The **launcher link** is that plus `/launch`.
+
+**Checkpoint.** Open the Invoke URL: the portal's sign-in page, with `https://` and the API's address in the address bar. Open the launcher link: since the portal is awake, it forwards to the same page.
 
 #### A5. Finishing
 
-Lambda → `cloud-dev-portal-mode` → **Test** tab: save three more test events. These are your switches.
+1. **Lock the app to the HTTPS address.** Beanstalk → **Configuration** → **Updates, monitoring, and logging** → **Edit** → Environment properties: add
+
+| Name | Source | Value |
+| --- | --- | --- |
+| `ORIGIN_VERIFY_SECRET` | **SSM Parameter Store** | `arn:aws:ssm:us-east-1:<account id>:parameter/cloud-dev-portal/origin-verify-secret` |
+| `COOKIE_SECURE` | Plain text | `true` (sign-in cookies are sent over HTTPS only) |
+| `PUBLIC_BASE_URL` | Plain text | the Invoke URL (links in emails) |
+
+   → **Apply**. **Checkpoint:** the Beanstalk address now answers "เปิดพอร์ทัลผ่านที่อยู่ HTTPS ของพอร์ทัล" (open the portal through its HTTPS address), while the Invoke URL works and you can sign in there.
+2. Lambda → `cloud-dev-portal-mode` → **Test** tab: save three more test events. These are your switches.
 
 | Event name | Event JSON |
 | --- | --- |
@@ -324,14 +423,14 @@ Lambda → `cloud-dev-portal-mode` → **Test** tab: save three more test events
 
 1. Run the **`hibernate`** event. The result shows `"app_instances": 0`.
 2. Wait until RDS shows `portal-db` as **Stopped** (about 5 minutes) and EC2 shows no running instance for the environment.
-3. Open the launcher link: the waking-up page appears, its two dots turn orange, then green after 5 to 10 minutes, and it forwards to the portal by itself.
+3. Open the launcher link (`…/launch`): the waking-up page appears, its two dots turn orange, then green after 5 to 10 minutes, and it forwards to the portal by itself.
 4. Leave it unused: within 45 minutes (30 idle minutes plus up to 15 until the next tick) Aurora stops again.
 
 ### Option B: set it up with CloudFormation
 
 
 1. Put the lab's credentials in `~/.aws/credentials` (see [Using the AWS CLI](#using-the-aws-cli-from-your-computer)).
-2. Have the environment's name at hand (see [Two ways to set it up](#two-ways-to-set-it-up)).
+2. Have the environment's name and domain at hand (see [Two ways to set it up](#two-ways-to-set-it-up)), and create the secret parameter `/cloud-dev-portal/origin-verify-secret` as in A4 step 1.
 3. From the project folder, upload the function's code (to your docs bucket, under `deploy/`) and create the stack:
 
 ```bash
@@ -339,13 +438,14 @@ aws cloudformation package --template-file infra/sleep-wake.yaml --s3-bucket <yo
 ```
 
 ```bash
-aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud-dev-portal-modes --parameter-overrides EnvironmentName=<environment name>
+aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud-dev-portal-modes --parameter-overrides EnvironmentName=<environment name> EnvironmentCname=<environment domain> OriginVerifySecret=$(aws ssm get-parameter --name /cloud-dev-portal/origin-verify-secret --with-decryption --query Parameter.Value --output text)
 ```
 
    The midnight shutdown defaults to midnight in Thailand; for another time zone add `NightlyStopSchedule="cron(0 15 * * ? *)"` (the time in UTC) to the overrides.
 
-   It takes a minute or two. Then CloudFormation → `cloud-dev-portal-modes` → **Outputs** shows `LauncherUrl`, the launcher link (`https://abc123defg.execute-api.us-east-1.amazonaws.com`). Share it instead of the Beanstalk address.
-4. Lambda → `cloud-dev-portal-mode` → **Test** tab: save three test events:
+   It takes a minute or two. Then CloudFormation → `cloud-dev-portal-modes` → **Outputs** shows `PortalUrl`, the portal's HTTPS address, and `LauncherUrl`, the link to share.
+4. Lock the app to the HTTPS address as in A5 step 1, with `PortalUrl` as `PUBLIC_BASE_URL`.
+5. Lambda → `cloud-dev-portal-mode` → **Test** tab: save three test events:
 
 | Event name | Event JSON |
 | --- | --- |
@@ -362,12 +462,12 @@ aws cloudformation deploy --template-file infra/packaged.yaml --stack-name cloud
 
 ### Things to know
 
-- While asleep, Beanstalk shows the environment as **Severe** or **No data**: expected, it has no instance. Its address doesn't answer; use the launcher link.
+- While asleep, Beanstalk shows the environment as **Severe** or **No data**: expected, it has no instance. The portal's pages don't answer then (API Gateway shows `Service Unavailable`); the launcher link (`…/launch`) is the one that wakes it.
 - **Wake it before deploying a new version.** A deploy to a sleeping environment fails.
 - Each wake builds the app on a fresh instance (the instance is removed while asleep), which takes about as long as Aurora's start, so the two overlap. A later improvement: build the image once into ECR so the instance only downloads it.
 - The function's logs are in CloudWatch → Log groups → `/aws/lambda/cloud-dev-portal-mode`.
 - If a switch fails with `AccessDenied`, LabRole doesn't allow that action in your course (`rds:StartDBCluster`/`StopDBCluster`, `autoscaling:UpdateAutoScalingGroup`, `elasticbeanstalk:DescribeEnvironmentResources`, `ssm:PutParameter`). Then stop and start Aurora by hand as in [Saving budget](#saving-budget).
-- To remove it all: with Option B, CloudFormation → `cloud-dev-portal-modes` → **Delete**. With Option A, delete the pieces in reverse order: the API, the two EventBridge rules, the parameter and the function. The portal stays reachable at its Beanstalk address.
+- To remove it all: with Option B, CloudFormation → `cloud-dev-portal-modes` → **Delete**. With Option A, delete the pieces in reverse order: the API, the two EventBridge rules, the parameters and the function. **First** remove `ORIGIN_VERIFY_SECRET` from the Beanstalk properties, or the app keeps refusing every visitor.
 
 ## Using the AWS CLI from your computer
 
@@ -386,6 +486,8 @@ To run the portal locally against the real bucket, set `DOCS_BUCKET` in `backend
 | First deploy fails during `npm run build` | Not enough memory: use t3.medium |
 | Aurora creation fails mentioning a monitoring role | Enhanced Monitoring is on: turn it off |
 | Aurora creation fails: `not authorized to perform rds:CreateDBInstance` … `explicit deny` | Serverless (or a large instance class) chosen: use Provisioned, db.t3.medium |
+| The Beanstalk address answers "เปิดพอร์ทัลผ่านที่อยู่ HTTPS ของพอร์ทัล" | Expected after A5: use the HTTPS address. A 403 at the HTTPS address too means the secret in the API's parameter mapping differs from the SSM parameter |
+| Deploy fails retrieving secrets after 7c | A typo in a parameter ARN, or the parameter isn't in us-east-1 |
 | Portal shows database errors at the start of a session | Aurora is stopped: start it and wait for Available, or run `wake` |
 | The waking-up page never finishes | Read the function's logs (CloudWatch). A cluster still `stopping` can't start until it has stopped; the page keeps asking, so it continues by itself |
 | CloudFormation `deploy` fails creating the function | Check IAM → Roles for `LabRole` in your account |
