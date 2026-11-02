@@ -46,7 +46,7 @@ You can do this in the console, as below, or with one command: see [commands.md]
    - `GitHubRepo`: your copy of the repository, if you forked it. It must be public.
    - `DomainPrefix`: if `cloud-dev-portal` is taken, add your student ID.
    - Leave the rest as they are.
-5. **Next** → Tags: `Project = cloud-dev-portal`, `Environment = dev`. Permissions: leave the IAM role empty. Stack failure options: **Delete all newly created resources**, so a failed attempt leaves nothing behind → **Next** → **Submit**.
+5. **Next** → Tags: `Project = cloud-dev-portal`, `Environment = dev`. Permissions: leave the IAM role empty. Stack deployment options: on **Behavior on provisioning failure**, select **Roll back all resources**, and on **Delete newly created resources during a rollback**, select **Delete all newly created resources**, so a failed attempt leaves nothing behind → **Next** → **Submit**.
 6. Watch the **Events** tab, with the newest at the top. Aurora takes about 6 minutes and Beanstalk about 6 more. A stack named `awseb-…` appears too: Beanstalk made it, and deleting `gargantua` removes it. Leave it and the Learner Lab stack (`c…`) alone.
 
 The stack finishes with **CREATE_COMPLETE**, but that doesn't prove the app started: Beanstalk counts its environment as created even if the app crashes. The checkpoint below is the real test.
