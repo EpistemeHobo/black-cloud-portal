@@ -11,7 +11,7 @@ import portal_stack  # noqa: E402
 
 OUTPUTS = [{"OutputKey": k, "OutputValue": v} for k, v in {
     "PortalUrl": "https://portal", "LauncherUrl": "https://portal/launch",
-    "AdminEmail": "a@b.c", "AdminPasswordSecret": "arn:secret"}.items()]
+    "AdminEmail": "a@b.c"}.items()]
 MISSING = ClientError({"Error": {"Message": "Stack with id gargantua does not exist"}}, "DescribeStacks")
 
 
@@ -30,6 +30,16 @@ def fake_eb(env_answers=(), app=False):
     eb.describe_environments.side_effect = answers + [{"Environments": []}] * 5
     eb.describe_applications.return_value = {"Applications": [{"ApplicationName": "cloud-dev-portal"}] if app else []}
     return eb
+
+
+def test_the_template_carries_the_built_sign_in_background_and_stays_small_enough():
+    import base64
+    import re
+    root = Path(__file__).resolve().parent.parent
+    template = (root / "full-stack.yaml").read_bytes()
+    assert len(template) <= 51200, "too big to send directly to CloudFormation"
+    encoded = re.search(rb"Bytes: (\S+)", template).group(1)
+    assert base64.b64decode(encoded) == (root / "signin-background.svg").read_bytes()
 
 
 @pytest.fixture(autouse=True)

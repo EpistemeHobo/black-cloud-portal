@@ -42,6 +42,12 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def local_passwords() -> None:
+    """For routes that only make sense while the portal keeps its own passwords."""
+    if config.USE_COGNITO:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
 def as_utc(value: Optional[datetime]) -> Optional[datetime]:
     """SQLite hands datetimes back without a timezone; they were stored as UTC."""
     if value is not None and value.tzinfo is None:
@@ -155,6 +161,20 @@ def seed_admin(db: Session) -> None:
     is how a forgotten admin password is replaced.
     """
     email, password = config.SEED_ADMIN_EMAIL, config.SEED_ADMIN_PASSWORD
+    if config.USE_COGNITO and email:
+        # No password here: this address becomes the admin once Cognito has verified it.
+        person = db.scalar(select(Person).where(Person.email == email))
+        if person is None:
+            person = Person(email=email, name=config.SEED_ADMIN_NAME or email)
+            db.add(person)
+        elif person.status != NO_ACCOUNT:
+            return
+        person.status = ACTIVE
+        person.is_admin = True
+        person.email_verified = True
+        db.commit()
+        logger.info("Seed admin %s is ready.", email)
+        return
     if not email or not password:
         if not db.scalar(select(Person.id).where(Person.is_admin, Person.status == ACTIVE)):
             logger.warning("No active admin and SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD are not set: "

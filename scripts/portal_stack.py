@@ -153,7 +153,7 @@ def create(cfn, email: str) -> int:
         print("See Beanstalk, environment cloud-dev: Events and Logs.")
         return 1
     print(f"\nPortal:   {found['PortalUrl']}\nLauncher: {found['LauncherUrl']}\nAdmin:    {found['AdminEmail']}")
-    print(f"Password: Secrets Manager, Retrieve secret value of\n          {found['AdminPasswordSecret']}")
+    print("Password: Cognito has emailed a temporary one to that address")
     return 0
 
 

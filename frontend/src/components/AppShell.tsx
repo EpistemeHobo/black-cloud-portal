@@ -101,10 +101,11 @@ function AdminMenu({ me, waiting, tabIndex }: { me: Me; waiting: number; tabInde
 }
 
 function UserArea({ me, waiting, signOut, tabIndex }: { me: Me; waiting: number; signOut: () => void; tabIndex?: number }) {
+  const { cognito } = useSession();
   return (
     <div className="flex items-center gap-4 whitespace-nowrap text-base">
       {me.is_admin ? <AdminMenu me={me} waiting={waiting} tabIndex={tabIndex} /> : <span className="text-slate-300">{me.name}</span>}
-      <ChangePassword tabIndex={tabIndex} />
+      {!cognito && <ChangePassword tabIndex={tabIndex} />}
       <Button icon={<PowerIcon />} text rounded className="!text-slate-200" onClick={signOut} tabIndex={tabIndex}
         aria-label="ออกจากระบบ" tooltip="ออกจากระบบ" tooltipOptions={{ position: "bottom" }} />
     </div>

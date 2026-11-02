@@ -13,6 +13,8 @@ type SessionValue = {
   label: (value: string) => string;
   notify: (severity: "success" | "error" | "info", summary: string, detail?: string) => void;
   signOut: () => Promise<void>;
+  /** Passwords live in Cognito, so the portal's own password screens are hidden. */
+  cognito: boolean;
 };
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -23,7 +25,7 @@ export function useSession(): SessionValue {
   return value;
 }
 
-export type AuthConfig = { support_email: string; allowed_email_domains: string[] };
+export type AuthConfig = { support_email: string; allowed_email_domains: string[]; cognito: boolean; cognito_logout_url: string | null };
 
 export function SessionProvider({ children, signIn }: {
   children: React.ReactNode;
@@ -55,10 +57,11 @@ export function SessionProvider({ children, signIn }: {
   }, []);
 
   const signOut = useCallback(async () => {
-    await api("/api/auth/logout", { method: "POST" });
+    const { logout_url } = await api<{ logout_url: string | null }>("/api/auth/logout", { method: "POST" });
     // A full reload on purpose, so no signed-in state is left in memory.
+    // With Cognito, through its sign-out page, which comes back here.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = "/";
+    window.location.href = logout_url ?? "/";
   }, []);
 
   const label = useCallback((value: string) => choiceLabel(meta, value), [meta]);
@@ -70,7 +73,7 @@ export function SessionProvider({ children, signIn }: {
     <>
       <Toast ref={toast} position="bottom-right" />
       {me && meta ? (
-        <SessionContext.Provider value={{ me, meta, label, notify, signOut }}>{children}</SessionContext.Provider>
+        <SessionContext.Provider value={{ me, meta, label, notify, signOut, cognito: config?.cognito ?? false }}>{children}</SessionContext.Provider>
       ) : (
         signIn({ config, onSignedIn: load, error })
       )}

@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 sqlalchemy>=2.0,<3
 alembic
-# [crypto] adds the RS256/ES256 verifiers that Keycloak ID tokens need.
+# [crypto] adds the RS256 verifier that Cognito's ID tokens need.
 pyjwt[crypto]
 httpx
 python-dotenv

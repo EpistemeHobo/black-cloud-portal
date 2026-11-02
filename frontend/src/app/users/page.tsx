@@ -24,7 +24,7 @@ const STATUS: Record<AccountStatus, { label: string; severity: "success" | "warn
 /** Accounts for admins: suspend, grant admin or auditor, send reset links. Sign-ups waiting
     for approval are on the requests page (/requests/). */
 export default function UsersPage() {
-  const { me, notify } = useSession();
+  const { me, notify, cognito } = useSession();
   const [users, setUsers] = useState<Account[] | null>(null);
   const [search, setSearch] = useState("");
   const [showNoAccount, setShowNoAccount] = useState(false);
@@ -74,7 +74,7 @@ export default function UsersPage() {
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <h1 className="page-title metal-ink">ผู้ใช้</h1>
-          <p className="text-slate-600">ระงับบัญชี กำหนดสิทธิ์ และส่งลิงก์ตั้งรหัสผ่าน</p>
+          <p className="text-slate-600">{cognito ? "ระงับบัญชีและกำหนดสิทธิ์" : "ระงับบัญชี กำหนดสิทธิ์ และส่งลิงก์ตั้งรหัสผ่าน"}</p>
         </div>
       </div>
 
@@ -131,7 +131,7 @@ export default function UsersPage() {
               <Button label="เปิดใช้อีกครั้ง" icon="pi pi-replay" size="small" text
                 onClick={() => change(u, { status: "active" }, `เปิดใช้บัญชี ${u.name} อีกครั้งแล้ว`)} />
             )}
-            {(u.status === "active" || u.status === "suspended") && (
+            {!cognito && (u.status === "active" || u.status === "suspended") && (
               <Button label="ส่งลิงก์ตั้งรหัสผ่าน" icon="pi pi-envelope" size="small" text onClick={() => sendReset(u)} />
             )}
           </div>

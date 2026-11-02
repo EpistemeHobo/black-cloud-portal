@@ -37,10 +37,10 @@ Run the commands from the project folder, in any terminal: PowerShell, the VS Co
 python scripts/portal_stack.py create you@example.org
 ```
 
-Builds everything in about 12 minutes, with your email as the first admin. Check that the session has at least 30 minutes left. When it finishes, it prints the portal's address, the launcher link, and where to find the password:
+Builds everything in about 12 minutes, with your email as the first admin. Check that the session has at least 30 minutes left. When it finishes, it prints the portal's address and the launcher link:
 
-1. Console → **Secrets Manager** → open the secret it names → **Retrieve secret value**.
-2. Open the portal's address and sign in with your email and that password.
+1. Find the email from Cognito with your temporary password. Check the spam folder too.
+2. Open the portal's address, press **เข้าสู่ระบบ**, sign in on Cognito's page with your email and that password, and choose a new one.
 
 ```bash
 python scripts/portal_stack.py status

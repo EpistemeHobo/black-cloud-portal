@@ -56,6 +56,7 @@ The data model is in [data-model.md](data-model.md).
 
 ## Login and permissions
 
+- On AWS, when the `COGNITO_*` settings are set, Cognito's pages handle passwords and email codes, and the portal's password routes and screens are switched off (decision 0008). Approval, suspension and admin rights stay in the portal. The rest of this item and the password-reset link below apply when they're unset.
 - Everyone signs in with their email and a password the portal stores as a slow salted hash (decision 0004). Signing up sends a link to verify the address; then an admin approves the account on the Users page. Forgotten passwords are replaced through an emailed link. Ten wrong passwords in an hour lock the account for 20 minutes.
 - An admin's name in the header opens the admin menu: **ผู้ใช้** (suspend accounts, grant admin or auditor, send the password-reset link), **จัดการคำขอ** (approve or reject sign-ups; the count of waiting ones shows on the name) and **ประวัติการใช้งาน** (account events: sign-ins, failed sign-ins, lockouts, sign-ups, approvals, password resets, with time and IP; table `activity_log`).
 - Every signed-in user can see every system and register a new one. The person who registers a system becomes its technical owner.

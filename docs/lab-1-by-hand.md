@@ -11,6 +11,7 @@ Use **either** this lab **or** Lab 2, not both: they use the same names. Tag wha
 | [1. The portal](#part-1-the-portal) | The app running on AWS | EC2 security groups, S3, Aurora, Elastic Beanstalk |
 | [2. Security](#part-2-security) | Least privilege, no standing secrets | RDS user, SSM Parameter Store, S3 policy, Session Manager |
 | [3. Hibernate and HTTPS](#part-3-hibernate-and-https) | Sleeping when idle, waking on a visit, HTTPS | Lambda, SSM, EventBridge, API Gateway |
+| [4. Sign-in with Cognito](#part-4-sign-in-with-cognito) | Passwords kept outside the app | Cognito |
 
 **You'll need** a computer with Git, and the project:
 
@@ -408,9 +409,87 @@ To switch, choose the event and press **Test**. Or from a terminal: [commands.md
 
 ---
 
+# Part 4: Sign-in with Cognito
+
+Until now the portal stores password hashes and needs an email service to confirm addresses. Here Cognito takes over passwords, email codes and forgotten passwords. The portal still decides who may enter: new people wait for an admin's approval, and admin rights stay in the portal.
+
+1. The portal's button sends the browser to Cognito's page, on an `amazoncognito.com` address. People type their password there, so the app never sees it. The page is in English, and only its logo and colours can be changed.
+2. Cognito sends the browser back to `/api/auth/callback` with a one-time code.
+3. The app swaps the code for an ID token, checks its signature and contents, and sets its usual session cookie. It doesn't keep the token.
+
+**Status of these steps:** the settings below were created through the API and tested against the real app. Only the Create user form has been used in the console, so other button names may differ.
+
+The app must be a version with Cognito sign-in. If you built your bundle before this part existed, repeat [Step 4](#step-4-build-the-app-bundle) and deploy it.
+
+## Step 14. User pool
+
+Cognito → **User pools** → **Create user pool**.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Application type | **Single-page application (SPA)** | It has no client secret. The app uses PKCE instead, so there's no secret to protect. A "traditional web application" would create one, and the app doesn't send it |
+| Application name | `portal` | |
+| Sign-in identifiers | **Email** | |
+| Self-registration | On | People can ask for an account |
+| Required attributes for sign-up | **name** | The portal shows it |
+| Return URL | your Invoke URL + `/api/auth/callback` | Cognito only sends people back to addresses listed here |
+
+Name the pool `cloud-dev-portal`. Then adjust it:
+
+1. **Sign-in → Password policy:** minimum length 12, with no character rules: length protects better than forcing symbols.
+2. **App clients → `portal` → Login pages → Edit:** add your Invoke URL + `/` as an **Allowed sign-out URL**. It must match exactly, including the `/`. OAuth grant type: **Authorization code grant**. Scopes: **OpenID**, **Email**, **Profile**.
+3. **Domain:** note the Cognito domain, in the form `https://<prefix>.auth.us-east-1.amazoncognito.com`. A prefix may not contain `aws`, `amazon` or `cognito`.
+4. **Managed login → Styles:** optional. Match the portal's sign-in page by turning off the page's background image and using page colour `#090a11`, button colour `#1c1e22` and link colour `#0f172a`. The full list is under `SignInPages` in [infra/full-stack.yaml](../infra/full-stack.yaml). To get the portal's twinkling dots too, upload [infra/signin-background.svg](../infra/signin-background.svg) as the page background. A change can take a couple of minutes to appear.
+
+Wait about 2 minutes before opening that address. If you open it too early, your DNS server can remember that it doesn't exist; see [When something goes wrong](lab-common.md#when-something-goes-wrong).
+
+## Step 15. First admin
+
+Two settings with the same email make an admin: Cognito holds the login, and `SEED_ADMIN_EMAIL` tells the portal it's an admin.
+
+User pool → **Users** → **Create user**:
+
+- **Send an email invitation**
+- **Email address:** the same as `SEED_ADMIN_EMAIL`, exactly. Check it for typos: the temporary password goes there
+- **Mark email address as verified:** on. The portal refuses unverified addresses, so nobody can claim someone else's
+- **Generate a password**
+
+## Step 16. Switch the app to Cognito
+
+Beanstalk → **Configuration → Updates, monitoring, and logging → Environment properties**:
+
+| Name | Value |
+| --- | --- |
+| `COGNITO_USER_POOL_ID` | the pool's ID, such as `us-east-1_AbC123` |
+| `COGNITO_CLIENT_ID` | the app client's ID |
+| `COGNITO_DOMAIN` | the domain from step 14, with `https://` |
+
+Check that `PUBLIC_BASE_URL` is still your Invoke URL. The app builds its return address from it, and it must match step 14. Press **Apply**.
+
+**Checkpoint.**
+
+1. Open the Invoke URL. The email and password form is gone, and a **เข้าสู่ระบบ** button leads to Cognito's page.
+2. Sign in with the temporary password from the email. The sentence in the email ends with a full stop, which isn't part of the password. Choose your own password when asked: you land in the portal as admin, with your systems still there, because the same email links to your existing account.
+3. In a private window, press **สมัครใช้งาน**, sign up with another email and enter the emailed code. The portal says the account waits for approval. As admin, approve it under **จัดการคำขอ**.
+4. Try the old route, by running the command below with your Invoke URL. It answers `404`: the portal's own passwords no longer work.
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://YOUR-INVOKE-URL/api/auth/login
+```
+
+**Things to know:**
+
+- Cognito's built-in email sends at most 50 messages a day per account.
+- Failed sign-ins now happen at Cognito, so the portal's activity log no longer shows wrong passwords.
+- Admin rights never come from Cognito. To make someone else an admin, use the portal's **ผู้ใช้** page.
+
+---
+
 # Clean up
 
 Do this at the end, or before [Lab 2](lab-2-cloudformation.md), which needs the same names. In this order, because each depends on the next:
+
+0. **Part 4:** Cognito → delete the user pool `cloud-dev-portal`. Its domain must be deleted first.
 
 1. **Beanstalk:** terminate the environment `cloud-dev`, then delete the application `cloud-dev-portal`. Wait until it's gone (up to about 20 minutes).
 2. **Part 3:** API Gateway → delete `cloud-dev-portal-wake`. EventBridge → delete both rules. Lambda → delete `cloud-dev-portal-mode`.

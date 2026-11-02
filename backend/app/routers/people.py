@@ -4,7 +4,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app import account_emails, activity
-from app.auth import ACTIVE, NO_ACCOUNT, PENDING, SUSPENDED, admin_person, as_utc, current_person, utcnow
+from app.auth import (
+    ACTIVE, NO_ACCOUNT, PENDING, SUSPENDED, admin_person, as_utc, current_person, local_passwords, utcnow,
+)
 from app.db import get_db
 from app.models import ActivityLog, Person, Unit
 from app.schemas import PersonAdminPatch, PersonIn, UnitIn
@@ -102,7 +104,7 @@ def pending_count(db: Session = Depends(get_db), _: Person = Depends(admin_perso
                                .where(Person.status == PENDING, Person.email_verified))}
 
 
-@router.post("/admin/users/{person_id}/send-reset", status_code=202)
+@router.post("/admin/users/{person_id}/send-reset", status_code=202, dependencies=[Depends(local_passwords)])
 def send_reset(person_id: int, request: Request, tasks: BackgroundTasks, db: Session = Depends(get_db),
                admin: Person = Depends(admin_person)):
     """Email someone the same link as "forgot password", for when they ask an admin."""
@@ -134,6 +136,7 @@ def reject_sign_up(person_id: int, request: Request, db: Session = Depends(get_d
         person = _get(db, person_id)
         person.status = NO_ACCOUNT
         person.password_hash = None
+        person.cognito_sub = None
         db.commit()
     activity.record(db, "rejected", actor=admin, subject_email=email, request=request)
 

@@ -26,3 +26,6 @@ portal.zip
 .idea/
 .DS_Store
 Thumbs.db
+
+# Import files describing real systems: never in this public repository
+imports/

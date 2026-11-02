@@ -52,6 +52,24 @@ An unplanned test, on the same day. The session's keys dated from 11:40, so it e
 
 The script now gives a clear message when this happens, and finds and removes leftovers. That handling has been tested with AWS faked; on real AWS, only the case with nothing left over has been run.
 
+## Cognito
+
+The app on `localhost`, with a throwaway database, against a real user pool in the Learner Lab, on the same day. **The stack hasn't been built with Cognito yet;** the template has only passed CloudFormation's validation.
+
+| # | Step | Time | Result |
+| --- | --- | --- | --- |
+| 23 | Create pool, app client, domain and sign-in pages (API) | 18:03 | Pass: Learner Lab allowed all of them |
+| 24 | Open the domain at once, on a university network | 18:03 to 18:17 | **Fail:** Google's DNS found it, the university's kept answering that it doesn't exist. Fixed with a new domain name, opened only after Google's DNS found it (30 s) |
+| 25 | Sign in with no account | 18:55 | Refused, as it should be |
+| 26 | Sign up, enter the emailed code | 18:58 | Passed on the second try. The first return was refused (`DecodeError`), most likely because the 10-minute sign-in cookie had run out, not proven. The limit is now 1 hour, not yet retested |
+| 27 | New account's state | 18:58 | `pending`, not admin, verified, linked to Cognito |
+| 28 | Create the first admin in the console, sign in | 19:07 to 19:12 | Pass, after removing the email's closing full stop from the password: admin, linked |
+| 29 | Admin approves the new account | 19:12 | Pass: `active`, not admin |
+| 30 | Apply the portal's palette to Cognito's pages (API) | 19:15 | Pass: the sign-in page shows it. The same settings in the template have only passed validation |
+| 31 | Upload the twinkling dots as an animated SVG (API) | 19:18 to 19:25 | Pass: the dots blink on Cognito's page. Cognito refuses `<use>`, so the file uses patterns. A new upload took about 2 minutes to appear. Smoothness on a real screen not measured: the test browser was hidden, which slows animation |
+
+Automated tests, with Cognito faked, cover forged, expired and misdirected tokens, unverified addresses, a callback from another browser, and a second Cognito user claiming a linked address. Faked tests don't prove the same against real Cognito.
+
 ## What step 7 checked
 
 | Check | Result |
@@ -70,6 +88,8 @@ The script now gives a clear message when this happens, and finds and removes le
 
 ## Not tested
 
-- **Signing in through a browser,** and attaching a `.md` file through the portal's pages. Step 7 tested S3 from inside the app's container, not through the page.
+- **The stack with Cognito:** the `FirstAdminUser` resource, and signing in over the HTTPS address.
+- **Signing in as the approved account, and signing out through Cognito,** against real Cognito.
+- **Attaching a `.md` file through the portal's pages.** Step 7 tested S3 from inside the app's container, not through the page.
 - **The idle check and the midnight rule firing by themselves.** Steps 8 and 15 sent the same `hibernate` message by hand. The idle decision has unit tests only.
 - **A lab session ending with the stack just sitting there,** and whether `LabRole` works with no session open.

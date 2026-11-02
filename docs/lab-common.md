@@ -112,6 +112,10 @@ Lab page → **AWS Details → AWS CLI: Show** → copy the block over everythin
 | Portal shows database errors at the start of a session | Aurora is stopped: start it and wait for Available, or use the launcher link |
 | The waking-up page never finishes | Read the function's logs (CloudWatch). A cluster still `stopping` can't start until it has stopped; the page keeps asking, so it continues by itself |
 | Delete fails: `Db cluster portal-db is in stopped state` | A stopped cluster can't be deleted: start Aurora, wait for **Available**, delete again. The Lab 2 stack does this by itself |
+| Cognito's page: "Incorrect username or password" with a temporary password | The account doesn't exist yet, or a full stop was copied too: the sentence in the email ends with one, which isn't part of the password. Copy and paste; `1` and `l` look alike |
+| Cognito's address doesn't load ("server not found"), though the pool and domain exist | It was opened before the new name had spread, and your DNS server remembered that it doesn't exist. This happened on a university network and hadn't cleared after 10 minutes. Wait, try another network, or give the pool a new domain name and wait 2 minutes before opening it |
+| After Cognito: "เข้าสู่ระบบไม่สำเร็จ" | Usually the page sat open too long, or was started in another browser. Sign in again from the portal. The reason is in the app's log: `Cognito sign-in refused` |
+| After Cognito: "อีเมลนี้ใช้กับพอร์ทัลไม่ได้" | The email's domain isn't in `ALLOWED_EMAIL_DOMAINS`, or the address is already linked to another Cognito user, such as after a pool was recreated while the database stayed |
 | A stack fails with "already exists" | Resources from the other lab, or a failed attempt, still use the same names: delete them first |
 
 Where to read logs: Beanstalk → **Logs → Request logs → Full logs**. The app's output is under `var/log/eb-docker/containers/eb-current-app/`.

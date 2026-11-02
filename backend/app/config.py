@@ -85,9 +85,18 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 MAIL_FROM = os.environ.get("MAIL_FROM", "").strip()
 # The portal's own address, for the links in emails.
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
-if IS_PRODUCTION and not (SMTP_HOST and MAIL_FROM and os.environ.get("PUBLIC_BASE_URL")):
+
+# Sign-in through a Cognito user pool (see cognito.py), when all three are set. The
+# domain is the pool's full address. The portal's own password routes then answer 404.
+# Unset: the portal keeps its own passwords, as on a developer's machine.
+COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "").strip()
+COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "").strip()
+COGNITO_DOMAIN = os.environ.get("COGNITO_DOMAIN", "").strip().rstrip("/")
+USE_COGNITO = bool(COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID and COGNITO_DOMAIN)
+
+if IS_PRODUCTION and not (os.environ.get("PUBLIC_BASE_URL") and (USE_COGNITO or (SMTP_HOST and MAIL_FROM))):
     raise RuntimeError("SMTP_HOST, MAIL_FROM and PUBLIC_BASE_URL must be set in production: "
-                       "sign-up and password reset send emails.")
+                       "sign-up and password reset send emails. With Cognito, only PUBLIC_BASE_URL.")
 
 # Only these email domains may sign up (comma-separated, subdomains included).
 # Empty: any domain.

@@ -80,6 +80,25 @@ function takeLinkTokens(): LinkTokens {
   return linkTokens;
 }
 
+const COGNITO_OUTCOMES: Record<string, Flash> = {
+  pending: { severity: "info", text: "ยืนยันอีเมลแล้ว ตอนนี้บัญชีของคุณรอผู้ดูแลระบบอนุมัติ เข้าสู่ระบบได้หลังจากได้รับอนุมัติ" },
+  suspended: { severity: "error", text: "บัญชีของคุณถูกระงับ กรุณาติดต่อผู้ดูแลระบบ" },
+  refused: { severity: "error", text: "อีเมลนี้ใช้กับพอร์ทัลไม่ได้ กรุณาติดต่อผู้ดูแลระบบ" },
+  failed: { severity: "error", text: "เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" },
+};
+
+let cognitoOutcome: Flash | null | undefined;
+
+/** ?signin= from the return trip from Cognito. Read once, like the emailed links. */
+function takeCognitoOutcome(): Flash | null {
+  if (cognitoOutcome !== undefined) return cognitoOutcome;
+  if (typeof window === "undefined") return null;
+  const outcome = new URLSearchParams(window.location.search).get("signin");
+  if (outcome) window.history.replaceState(null, "", window.location.pathname);
+  cognitoOutcome = (outcome && COGNITO_OUTCOMES[outcome]) || null;
+  return cognitoOutcome;
+}
+
 // How often the title types itself out again, and how long the old one takes
 // to fade away first (matches .title-fading in globals.css).
 const RETYPE_EVERY_MS = 60_000;
@@ -112,10 +131,11 @@ export default function SignIn({ config, onSignedIn, error }: Props) {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [flash, setFlash] = useState<Flash | null>(error ? { severity: "warn", text: error } : null);
+  const [flash, setFlash] = useState<Flash | null>(() => error ? { severity: "warn", text: error } : takeCognitoOutcome());
   const [unverified, setUnverified] = useState(false);
   const [busy, setBusy] = useState(false);
-  const { heading, intro } = HEADINGS[mode];
+  const { heading } = HEADINGS[mode];
+  const intro = config?.cognito ? "เข้าสู่ระบบหรือสมัครใช้งานผ่านหน้าของ Amazon Cognito" : HEADINGS[mode].intro;
 
   function switchTo(next: Mode, message: Flash | null = null) {
     setMode(next);
@@ -227,7 +247,28 @@ export default function SignIn({ config, onSignedIn, error }: Props) {
                   onClick={resendVerification} disabled={busy} className="mt-2" />
               )}
 
-              {mode !== "notice" && (
+              {config?.cognito_logout_url && flash && (
+                <a href={config.cognito_logout_url} className="mt-2 block text-sm font-semibold text-slate-900 underline-offset-2 hover:underline">
+                  ใช้บัญชีอื่น
+                </a>
+              )}
+
+              {config?.cognito && (
+                <div className="mt-6 space-y-3">
+                  {/* Full page changes, not fetches: the browser itself goes to Cognito's pages. */}
+                  <a href="/api/auth/start" className="block" {...starsFast}>
+                    <Button type="button" label="เข้าสู่ระบบ" className="metal-button w-full" tabIndex={-1} />
+                  </a>
+                  <p className="text-center text-sm text-slate-600">
+                    เพิ่งเริ่มใช้พอร์ทัล?{" "}
+                    <a href="/api/auth/start?page=signup" className="font-semibold text-slate-900 underline-offset-2 hover:underline">
+                      สมัครใช้งาน
+                    </a>
+                  </p>
+                </div>
+              )}
+
+              {!config?.cognito && mode !== "notice" && (
                 <form onSubmit={submit} className="mt-6 space-y-4">
                   {mode === "signup" && (
                     <label className="block text-sm font-medium text-slate-700">
@@ -262,7 +303,7 @@ export default function SignIn({ config, onSignedIn, error }: Props) {
                 </form>
               )}
 
-              <p className="mt-6 text-center text-sm text-slate-600">
+              {!config?.cognito && <p className="mt-6 text-center text-sm text-slate-600">
                 {mode === "signin" ? (
                   <>
                     เพิ่งเริ่มใช้พอร์ทัล?{" "}
@@ -275,7 +316,7 @@ export default function SignIn({ config, onSignedIn, error }: Props) {
                     กลับไปหน้าเข้าสู่ระบบ
                   </button>
                 )}
-              </p>
+              </p>}
             </div>
 
             <div className="text-xs text-slate-400">

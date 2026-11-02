@@ -2,7 +2,7 @@
 
 Build the whole portal from one file, then delete all of it with one button. [Lab 1](lab-1-by-hand.md) builds the same system by hand.
 
-**Time:** about 12 minutes to build, 11 to 17 to delete ([measured](stack-test-log.md)). **Tested:** yes, from start to finish, apart from signing in through a browser and attaching a file through the pages. Read [Rules of the Learner Lab](lab-common.md#rules-of-the-learner-lab) and [When a lab session ends](lab-common.md#when-a-lab-session-ends) first.
+**Time:** about 12 minutes to build, 11 to 17 to delete ([measured](stack-test-log.md)). **Tested:** the stack without Cognito, from start to finish. Cognito was tested on its own against the running app ([log](stack-test-log.md#cognito)); the stack hasn't yet been built with it. Read [Rules of the Learner Lab](lab-common.md#rules-of-the-learner-lab) and [When a lab session ends](lab-common.md#when-a-lab-session-ends) first.
 
 ## The idea
 
@@ -13,9 +13,11 @@ Use **either** this lab **or** Lab 1, not both: they use the same names (`portal
 ```mermaid
 flowchart LR
     User[Browser] -->|HTTPS| API[API Gateway: the portal's address]
+    User -->|sign in, sign up| Cog[Cognito's pages]
     API -->|pages, /api: HTTP + secret header| EB[Beanstalk app]
     API -->|/launch, /_wake/*| Fn[Lambda cloud-dev-portal-mode]
     Timer[EventBridge rules] --> Fn
+    EB -->|one-time code for a token| Cog
     EB --> Aurora[(Aurora)]
     EB --> S3[(S3 bucket)]
     Fn -->|start / stop| Aurora
@@ -23,7 +25,7 @@ flowchart LR
     Secrets[Secrets Manager] -.-> EB
 ```
 
-**What it builds:** two security groups, a private and versioned S3 bucket that refuses plain HTTP, Aurora, generated secrets, the Beanstalk application and environment (no key pair, so no SSH), the Lambda function, the `mode` parameter, two EventBridge rules, and the API Gateway HTTPS address.
+**What it builds:** two security groups, a private and versioned S3 bucket that refuses plain HTTP, Aurora, generated secrets, a Cognito user pool with its sign-in pages and your admin user, the Beanstalk application and environment (no key pair, so no SSH), the Lambda function, the `mode` parameter, two EventBridge rules, and the API Gateway HTTPS address.
 
 **What differs from Lab 1, and why:**
 
@@ -31,7 +33,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Secrets | SSM SecureStrings | **Secrets Manager** | CloudFormation can't create SecureStrings, but it can generate secrets here. Nobody ever chooses them |
 | The app's database user | You run a script once | **The container creates it on start** | Nobody is there to run a script. The master password stays in its secret; the app is given only that secret's ARN |
-| Seed admin password | Removed after first sign-in | **Stays linked, in its secret** | Removing it would make the running environment differ from the template. The app ignores it once the account exists |
+| First admin | You create the Cognito user | **The stack creates it** | `AdminEmail` sets both the Cognito user and the portal's admin. Cognito emails the temporary password, so no secret store ever holds it |
 | Code | You upload zips | **Fetched from GitHub** | A small function downloads the repository, which must be public, when the stack is created |
 
 ## Create the stack
@@ -42,7 +44,7 @@ You can do this in the console, as below, or with one command: see [commands.md]
 2. Download [infra/full-stack.yaml](../infra/full-stack.yaml) from the repository.
 3. CloudFormation → **Create stack** → **With new resources (standard)** → *Choose an existing template* → **Upload a template file** → choose the file → **Next**.
 4. Stack name: **`gargantua`**. Parameters:
-   - `AdminEmail`: the email you'll sign in with. Required.
+   - `AdminEmail`: the email you'll sign in with. Required, and check it carefully: the temporary password goes here.
    - `GitHubRepo`: your copy of the repository, if you forked it. It must be public.
    - `DomainPrefix`: if `cloud-dev-portal` is taken, add your student ID.
    - Leave the rest as they are.
@@ -54,11 +56,12 @@ The stack finishes with **CREATE_COMPLETE**, but that doesn't prove the app star
 ## Checkpoint
 
 1. `gargantua` → **Outputs** → open `PortalUrl`: the Gargantua sign-in page over HTTPS. If it shows `Service Unavailable`, the app is still starting: try again in a few minutes.
-2. Secrets Manager → open the secret named in `AdminPasswordSecret` → **Retrieve secret value**. Sign in with `AdminEmail` and that password.
-3. Register a system, open its handover guide and attach a `.md` file. S3 → the bucket named in `DocsBucketName`: it appears under `systems/`.
-4. Open the Beanstalk address (`http://cloud-dev-portal.us-east-1.elasticbeanstalk.com`): it refuses you with "เปิดพอร์ทัลผ่านที่อยู่ HTTPS ของพอร์ทัล". That's the lock working: HTTPS is the only way in.
+2. Find the email from `no-reply@verificationemail.com`, and check spam. It arrives during the build. Press **เข้าสู่ระบบ**, and on Cognito's page sign in with `AdminEmail` and the temporary password. The sentence in the email ends with a full stop, which isn't part of the password. Choose your own password when asked: you land in the portal as admin.
+3. Open the portal in a private window and press **สมัครใช้งาน**. Sign up with another email and enter the emailed code: the portal says the account waits for approval. As admin, approve it under **จัดการคำขอ**.
+4. Register a system, open its handover guide and attach a `.md` file. S3 → the bucket named in `DocsBucketName`: it appears under `systems/`.
+5. Open the Beanstalk address (`http://cloud-dev-portal.us-east-1.elasticbeanstalk.com`): it refuses you with "เปิดพอร์ทัลผ่านที่อยู่ HTTPS ของพอร์ทัล". That's the lock working: HTTPS is the only way in.
 
-Each new stack has a **new address and a new password**, and an empty database. Get them from **Outputs** each time. Share `LauncherUrl`, not `PortalUrl`: it wakes the portal if it's asleep.
+Each new stack has a **new address, a new temporary password**, and an empty database with no users. Get the address from **Outputs** each time. Share `LauncherUrl`, not `PortalUrl`: it wakes the portal if it's asleep.
 
 ## Switch modes
 
@@ -77,7 +80,7 @@ The stack starts in **active**: Aurora and the instance stay on. Switch with [th
 
 CloudFormation → `gargantua` → **Delete stack**. It removes everything above. It takes 11 to 14 minutes, or about 17 if Aurora is asleep: it empties the bucket first, and starts Aurora first if it's asleep, since CloudFormation can't delete a stopped cluster.
 
-**All portal data is lost,** by design: there's no final snapshot. Start it with **at least 30 minutes left** in the session. Check that the stack disappears from the list; if it shows **DELETE_FAILED**, open **Events** for the reason and press **Delete** again. Also check that no red `awseb-…` stack remains: a delete cut off by the session's end [can leave pieces behind](lab-common.md#if-a-delete-was-cut-off).
+**All portal data and Cognito users are lost,** by design: there's no final snapshot. Start it with **at least 30 minutes left** in the session. Check that the stack disappears from the list; if it shows **DELETE_FAILED**, open **Events** for the reason and press **Delete** again. Also check that no red `awseb-…` stack remains: a delete cut off by the session's end [can leave pieces behind](lab-common.md#if-a-delete-was-cut-off).
 
 Two things stay, and they cost next to nothing: Beanstalk's own bucket `elasticbeanstalk-us-east-1-<account id>`, and the parameter `/cloud-dev-portal/woken-at`, which the function creates by itself.
 
@@ -89,3 +92,4 @@ Two things stay, and they cost next to nothing: Beanstalk's own bucket `elasticb
 2. Why does the Lambda function use `LabRole`, and what would you attach instead in a real account? ([infra/iam/](../infra/iam/))
 3. Why isn't `CREATE_COMPLETE` enough to know the portal works?
 4. What would you change in the template to run a second copy of the portal in the same account?
+5. Cognito knows who someone is, so why does the portal still keep its own approval and admin flags?

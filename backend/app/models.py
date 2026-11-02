@@ -39,6 +39,8 @@ class Person(Base):
     # added as an owner who has never signed up; "pending" waits for an admin.
     status: Mapped[str] = mapped_column(String(20), default="no_account")
     password_hash: Mapped[Optional[str]] = mapped_column(String(255))
+    # Cognito's permanent id for this person, set at their first sign-in through it.
+    cognito_sub: Mapped[Optional[str]] = mapped_column(String(64), unique=True)
     # Set by the link emailed at sign-up (or any emailed link the person opened).
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     last_sign_in_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
