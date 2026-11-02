@@ -76,20 +76,23 @@ Resources:
             Resource: [!GetAtt DocsBucket.Arn, !Sub "${DocsBucket.Arn}/*"]
             Condition: {Bool: {aws:SecureTransport: "false"}}
 
-  # Fetches the code from GitHub into the bucket when the stack is created. When
-  # the stack is deleted it empties the bucket, every version, so Delete can finish.
+  # Fetches the code from GitHub into the bucket when the stack is created, and
+  # looks up the default VPC, so nobody has to enter its IDs. When the stack is
+  # deleted it empties the bucket, every version, and starts Aurora if it's asleep:
+  # CloudFormation can't delete a stopped cluster. Both let Delete finish.
   CodeFunction:
     Type: AWS::Lambda::Function
     Properties:
-      Description: Fetches the portal's code from GitHub into S3; empties the bucket on stack delete
+      Description: Fetches the code and finds the default VPC; on stack delete, empties the bucket and wakes Aurora
       Runtime: python3.12
       Handler: index.handler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
-      Timeout: 300
+      Timeout: 900
       MemorySize: 256
       Code:
         ZipFile: |
           import io
+          import time
           import urllib.request
           import zipfile
 
@@ -107,20 +110,56 @@ Resources:
               with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as out:
                   for item in source.infolist():
                       if not item.is_dir():
-                          out.writestr(item.filename[len(top):], source.read(item))
+                          # GitHub's zip has no permissions, and Python then writes files readable
+                          # by root alone. The app runs as another user, so make them readable.
+                          entry = zipfile.ZipInfo(item.filename[len(top):], item.date_time)
+                          entry.external_attr = 0o644 << 16
+                          entry.compress_type = zipfile.ZIP_DEFLATED
+                          out.writestr(entry, source.read(item))
               bucket = boto3.resource("s3").Bucket(props["Bucket"])
               bucket.put_object(Key="deploy/portal.zip", Body=bundle.getvalue())
               bucket.put_object(Key="deploy/portal_mode.zip", Body=source.read(top + "infra/portal_mode.zip"))
 
 
+          def default_network():
+              ec2 = boto3.client("ec2")
+              vpc = ec2.describe_vpcs(Filters=[{"Name": "is-default", "Values": ["true"]}])["Vpcs"][0]["VpcId"]
+              # us-east-1e has no t3 instances.
+              subnets = ec2.describe_subnets(Filters=[
+                  {"Name": "vpc-id", "Values": [vpc]},
+                  {"Name": "availability-zone", "Values": ["us-east-1a", "us-east-1b", "us-east-1c"]},
+              ])["Subnets"]
+              return {"VpcId": vpc, "Subnets": ",".join(subnet["SubnetId"] for subnet in subnets)}
+
+
+          def wake_database(cluster, context):
+              rds = boto3.client("rds")
+              while context.get_remaining_time_in_millis() > 30000:
+                  try:
+                      status = rds.describe_db_clusters(DBClusterIdentifier=cluster)["DBClusters"][0]["Status"]
+                  except rds.exceptions.DBClusterNotFoundFault:
+                      return
+                  if status == "available":
+                      return
+                  if status == "stopped":
+                      rds.start_db_cluster(DBClusterIdentifier=cluster)
+                  time.sleep(15)
+              raise TimeoutError(f"Cluster {cluster} is still {status}")
+
+
           def handler(event, context):
               props = event["ResourceProperties"]
+              data = {}
               try:
-                  if event["RequestType"] == "Delete":
+                  if "Cluster" in props:
+                      if event["RequestType"] == "Delete":
+                          wake_database(props["Cluster"], context)
+                  elif event["RequestType"] == "Delete":
                       boto3.resource("s3").Bucket(props["Bucket"]).object_versions.delete()
                   else:
                       fetch(props)
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, "portal-code")
+                      data = default_network()
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, data, "portal-code")
               except Exception as error:
                   print(error)
                   cfnresponse.send(event, context, cfnresponse.FAILED, {}, "portal-code", reason=str(error))
@@ -185,6 +224,15 @@ Resources:
       Engine: aurora-postgresql
       DBInstanceClass: db.t3.medium   # Learner Lab refuses Aurora Serverless
       PubliclyAccessible: false
+
+  # Deleted after the rules below (they depend on it), so the idle check can't put
+  # Aurora back to sleep, and before the database (it depends on that).
+  DatabaseAwake:
+    Type: Custom::DatabaseAwake
+    DependsOn: DbInstance
+    Properties:
+      ServiceToken: !GetAtt CodeFunction.Arn
+      Cluster: !Ref DbCluster
 
   # ---------- HTTPS address ----------
   # Its address goes into the app's settings and the app's address into its routes.
@@ -254,8 +302,9 @@ Resources:
         - {Namespace: aws:autoscaling:launchconfiguration, OptionName: SecurityGroups, Value: !GetAtt AppSecurityGroup.GroupId}
         - {Namespace: aws:autoscaling:launchconfiguration, OptionName: DisableIMDSv1, Value: "true"}
         - {Namespace: aws:ec2:instances, OptionName: InstanceTypes, Value: t3.small}
-        # us-east-1e has no t3 instances.
-        - {Namespace: aws:autoscaling:asg, OptionName: Custom Availability Zones, Value: "us-east-1a,us-east-1b,us-east-1c"}
+        - {Namespace: aws:ec2:vpc, OptionName: VPCId, Value: !GetAtt Code.VpcId}
+        - {Namespace: aws:ec2:vpc, OptionName: Subnets, Value: !GetAtt Code.Subnets}
+        - {Namespace: aws:ec2:vpc, OptionName: AssociatePublicIpAddress, Value: "true"}
         - {Namespace: aws:elasticbeanstalk:command, OptionName: Timeout, Value: "1200"}
         - {Namespace: aws:elasticbeanstalk:managedactions, OptionName: ManagedActionsEnabled, Value: "false"}
         - {Namespace: aws:elasticbeanstalk:healthreporting:system, OptionName: SystemType, Value: basic}
@@ -307,6 +356,7 @@ Resources:
           IDLE_MINUTES: !Ref IdleMinutes
   TickRule:
     Type: AWS::Events::Rule
+    DependsOn: DatabaseAwake
     Properties:
       Name: cloud-dev-portal-tick
       ScheduleExpression: rate(15 minutes)
@@ -321,6 +371,7 @@ Resources:
       SourceArn: !GetAtt TickRule.Arn
   NightlyRule:
     Type: AWS::Events::Rule
+    DependsOn: DatabaseAwake
     Properties:
       Name: cloud-dev-portal-nightly-stop
       ScheduleExpression: !Ref NightlyStopSchedule

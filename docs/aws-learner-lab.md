@@ -267,7 +267,7 @@ The portal's own address is plain `http://`: passwords and session cookies would
 
 ## Build everything with one stack
 
-Steps 1 to 7 and the hibernate system, built by hand, take most of a day. [infra/full-stack.yaml](../infra/full-stack.yaml) describes all of it in one file: upload it, and CloudFormation builds the whole portal from nothing in about 25 minutes. **Delete the stack and everything it made is gone**, data included. So you can tear it down after each practice and build it again, paying only while it exists.
+Steps 1 to 7 and the hibernate system, built by hand, take most of a day. [infra/full-stack.yaml](../infra/full-stack.yaml) describes all of it in one file: upload it, and CloudFormation builds the whole portal from nothing in about 15 minutes. **Delete the stack and everything it made is gone**, data included. So you can tear it down after each practice and build it again, paying only while it exists.
 
 Use **either** this **or** the hand-built version, not both: they use the same names (`portal-db`, `cloud-dev`, `portal-app-sg`…), so anything left from a hand-built setup makes the stack fail.
 
@@ -284,7 +284,7 @@ Use **either** this **or** the hand-built version, not both: they use the same n
 
 ### Create it
 
-1. Start the lab and open the console from the lab page, with at least **an hour** left in the session (the lab page shows the time).
+1. Start the lab and open the console from the lab page, with at least **30 minutes** left in the session (the lab page shows the time).
 2. CloudFormation → **Create stack** → **With new resources (standard)** → *Choose an existing template* → **Upload a template file** → [infra/full-stack.yaml](../infra/full-stack.yaml) → **Next**.
 3. Stack name: **`gargantua`**. Parameters:
    - `AdminEmail`: the email you'll sign in with. Required.
@@ -292,7 +292,7 @@ Use **either** this **or** the hand-built version, not both: they use the same n
    - `DomainPrefix`: if `cloud-dev-portal` is taken, add your student ID.
    - Leave the rest as they are.
 4. **Next** → Tags: `Project = cloud-dev-portal`, `Environment = dev`. Permissions: leave the IAM role empty. Stack failure options: **Delete all newly created resources**, so a failed attempt leaves nothing behind → **Next** → **Submit**.
-5. Watch the **Events** tab, with the newest at the top. Aurora takes about 10 minutes and Beanstalk about 10 more. The stack finishes with **CREATE_COMPLETE**.
+5. Watch the **Events** tab, with the newest at the top. Aurora takes about 6 minutes and Beanstalk about 6 more ([measured](stack-test-log.md)). The stack finishes with **CREATE_COMPLETE**, but that doesn't prove the app started: Beanstalk counts its environment as created even if the app crashes. The checkpoint below is the real test.
 
 **Checkpoint.**
 
@@ -303,7 +303,7 @@ Use **either** this **or** the hand-built version, not both: they use the same n
 
 ### Reset: delete it
 
-CloudFormation → `gargantua` → **Delete**. It takes 10 to 20 minutes, removes everything above, and empties the bucket first. **All portal data is lost**, by design: there's no final snapshot. Check that the stack disappears from the list; if it shows **DELETE_FAILED**, open **Events** for the reason and press **Delete** again.
+CloudFormation → `gargantua` → **Delete**. It takes about 10 to 15 minutes (about 17 if Aurora is asleep), removes everything above, empties the bucket first, and starts Aurora first if it's asleep (CloudFormation can't delete a stopped cluster). **All portal data is lost**, by design: there's no final snapshot. Check that the stack disappears from the list; if it shows **DELETE_FAILED**, open **Events** for the reason and press **Delete** again.
 
 CloudFormation doesn't remove these two things, which cost next to nothing: Beanstalk's own bucket `elasticbeanstalk-us-east-1-<account id>`, and the parameter `/cloud-dev-portal/woken-at`, which the function creates by itself.
 
@@ -578,6 +578,7 @@ To run the portal locally against the real bucket, set `DOCS_BUCKET` in `backend
 | The Beanstalk address answers "เปิดพอร์ทัลผ่านที่อยู่ HTTPS ของพอร์ทัล" | Expected after A5: use the HTTPS address. A 403 at the HTTPS address too means the secret in the API's parameter mapping differs from the SSM parameter |
 | Deploy fails retrieving secrets after 7c | A typo in a parameter ARN, or the parameter isn't in us-east-1 |
 | Portal shows database errors at the start of a session | Aurora is stopped: start it and wait for Available, or run `wake` |
+| Delete fails: `Db cluster portal-db is in stopped state` | Only on a stack from an older template, or a hand-built one: start Aurora, wait for **Available**, delete again |
 | The waking-up page never finishes | Read the function's logs (CloudWatch). A cluster still `stopping` can't start until it has stopped; the page keeps asking, so it continues by itself |
 | CloudFormation `deploy` fails creating the function | Check IAM → Roles for `LabRole` in your account |
 | Connection refused or reset while Beanstalk shows Green | The instance is stuck without the app, usually after a lab session ended. Replace it: see [When a lab session ends](#when-a-lab-session-ends) |

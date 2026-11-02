@@ -85,6 +85,8 @@ All settings are listed in `.env.example`.
 - [Project brief](docs/brief.md)
 - [Architecture](docs/architecture.md)
 - [Deploying to AWS Academy Learner Lab](docs/aws-learner-lab.md)
+- [Commands: build, switch and delete the portal](docs/commands.md)
+- [Test log for the one-stack build](docs/stack-test-log.md)
 - [Data model](docs/data-model.md)
 - [Decisions](docs/decisions/)
 - [Technical debt](docs/technical_debt.md)
