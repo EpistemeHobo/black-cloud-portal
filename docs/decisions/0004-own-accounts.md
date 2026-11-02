@@ -1,6 +1,6 @@
 # 4. Own accounts with email verification instead of SSO
 
-*Date: 2026-10-30 · Status: Accepted*
+*Date: 2026-10-30 · Status: Accepted; on AWS, replaced by Cognito sign-in ([decision 0008](0008-sign-in-with-cognito.md)). It still applies when the `COGNITO_*` settings are unset.*
 
 ## Context
 

@@ -50,7 +50,7 @@ An unplanned test, on the same day. The session's keys dated from 11:40, so it e
 | 21 | `gargantua` disappeared | 15:51 | **Looked done, but wasn't:** environment `cloud-dev`, application and the failed `awseb-…` stack remained. Aurora, bucket, secrets, function and security groups were gone |
 | 22 | Terminated the environment, deleted the application | 15:52:37 to 15:53:22 | Pass, 45 seconds: nothing left apart from `woken-at` |
 
-The script now gives a clear message when this happens, and finds and removes leftovers. That handling has been tested with AWS faked; on real AWS, only the case with nothing left over has been run.
+The script now gives a clear message when this happens, and finds and removes leftovers. That handling, including a Cognito user pool left behind, has been tested with AWS faked; on real AWS, only the case with nothing left over has been run, and that was before the stack had a pool.
 
 ## Cognito
 

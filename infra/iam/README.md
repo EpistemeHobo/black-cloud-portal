@@ -15,6 +15,10 @@ Each `Sid` names what the statement grants. The few `"Resource": "*"` entries ar
 read-only describe calls, or `UpdateAutoScalingGroup` narrowed by the
 environment's tag, because those actions can't be limited by resource name.
 
+Cognito sign-in needs no IAM permission for the app: it only uses the user pool's
+public sign-in and key addresses. Whoever creates the pool needs `cognito-idp`
+permissions, but the running app doesn't.
+
 `python -m app.app_db_user` additionally needs `ssm:PutParameter` on
 `/cloud-dev-portal/db-password` once, when it stores the new password; give it
 to whoever runs that step, not to the app.

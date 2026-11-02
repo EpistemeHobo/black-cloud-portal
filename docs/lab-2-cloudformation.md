@@ -80,7 +80,7 @@ The stack starts in **active**: Aurora and the instance stay on. Switch with [th
 
 CloudFormation → `gargantua` → **Delete stack**. It removes everything above. It takes 11 to 14 minutes, or about 17 if Aurora is asleep: it empties the bucket first, and starts Aurora first if it's asleep, since CloudFormation can't delete a stopped cluster.
 
-**All portal data and Cognito users are lost,** by design: there's no final snapshot. Start it with **at least 30 minutes left** in the session. Check that the stack disappears from the list; if it shows **DELETE_FAILED**, open **Events** for the reason and press **Delete** again. Also check that no red `awseb-…` stack remains: a delete cut off by the session's end [can leave pieces behind](lab-common.md#if-a-delete-was-cut-off).
+**All portal data and Cognito users are lost,** by design: there's no final snapshot. You don't delete users yourself: they live inside the stack's user pool, which goes with it. The next build starts with only your admin, and sends a new temporary password. Start it with **at least 30 minutes left** in the session. Check that the stack disappears from the list; if it shows **DELETE_FAILED**, open **Events** for the reason and press **Delete** again. Also check that no red `awseb-…` stack remains: a delete cut off by the session's end [can leave pieces behind](lab-common.md#if-a-delete-was-cut-off).
 
 Two things stay, and they cost next to nothing: Beanstalk's own bucket `elasticbeanstalk-us-east-1-<account id>`, and the parameter `/cloud-dev-portal/woken-at`, which the function creates by itself.
 

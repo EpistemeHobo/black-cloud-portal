@@ -42,9 +42,20 @@ def test_the_template_carries_the_built_sign_in_background_and_stays_small_enoug
     assert base64.b64decode(encoded) == (root / "signin-background.svg").read_bytes()
 
 
+def fake_idp(pool_answers=()):
+    """Cognito with a user pool for as many checks as pool_answers says."""
+    idp = MagicMock()
+    pool = {"Id": "us-east-1_abc", "Name": "cloud-dev-portal"}
+    answers = [{"UserPools": [pool] if present else []} for present in pool_answers]
+    idp.list_user_pools.side_effect = answers + [{"UserPools": []}] * 5
+    idp.describe_user_pool.return_value = {"UserPool": {"Domain": "cloud-dev-portal-123"}}
+    return idp
+
+
 @pytest.fixture(autouse=True)
 def no_waiting(monkeypatch):
     monkeypatch.setattr(portal_stack, "POLL_SECONDS", 0)
+    monkeypatch.setattr(portal_stack.boto3, "client", lambda *a, **k: fake_idp())
     monkeypatch.setattr(portal_stack, "answers", lambda url: True)
 
 
@@ -102,6 +113,36 @@ def test_delete_removes_what_an_interrupted_delete_left(capsys):
     eb.delete_application.assert_called_once_with(ApplicationName="cloud-dev-portal", TerminateEnvByForce=True)
     cfn.delete_stack.assert_any_call(StackName="awseb-e-abc-stack")
     assert "other" not in str(cfn.delete_stack.call_args_list)
+
+
+def test_delete_removes_a_user_pool_left_behind_domain_first():
+    cfn = fake_cfn("CREATE_COMPLETE", "DELETE_IN_PROGRESS", None)
+    cfn.list_stacks.return_value = {"StackSummaries": []}
+    idp = fake_idp([True, True])
+    assert portal_stack.main(["delete", "--yes"], cfn, fake_eb(), idp) == 0
+    names = [call[0] for call in idp.method_calls]
+    assert names.index("delete_user_pool_domain") < names.index("delete_user_pool")
+    idp.delete_user_pool.assert_called_once_with(UserPoolId="us-east-1_abc")
+
+
+def test_another_user_pool_is_not_a_leftover():
+    cfn = fake_cfn(None)
+    cfn.list_stacks.return_value = {"StackSummaries": []}
+    idp = MagicMock()
+    idp.list_user_pools.return_value = {"UserPools": [{"Id": "x", "Name": "cloud-dev-portal-test"}]}
+    assert portal_stack.main(["delete", "--yes"], cfn, fake_eb(), idp) == 0
+    idp.delete_user_pool.assert_not_called()
+
+
+def test_without_a_stack_a_user_pool_needs_confirming_even_with_yes(monkeypatch, capsys):
+    # It could be a hand-built Lab 1, whose users would be lost.
+    monkeypatch.setattr("builtins.input", lambda prompt: "no")
+    cfn = fake_cfn(None)
+    cfn.list_stacks.return_value = {"StackSummaries": []}
+    idp = fake_idp([True])
+    assert portal_stack.main(["delete", "--yes"], cfn, fake_eb(), idp) == 1
+    assert "user pool" in capsys.readouterr().out
+    idp.delete_user_pool.assert_not_called()
 
 
 def test_without_a_stack_leftovers_need_confirming_even_with_yes(monkeypatch, capsys):

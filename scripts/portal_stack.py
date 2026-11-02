@@ -4,7 +4,8 @@
     python scripts/portal_stack.py status
     python scripts/portal_stack.py delete                   # asks first; all data is lost
 
-A delete cut off by the end of a lab session can leave Beanstalk's environment
+Deleting the stack also deletes its Cognito user pool and every user in it. A delete
+cut off by the end of a lab session can leave Beanstalk's environment or the pool
 behind, even though the stack itself disappears. `delete` looks for those leftovers
 afterwards, and you can run it again at any time to clear them.
 
@@ -28,6 +29,7 @@ STACK = "gargantua"
 REGION = "us-east-1"
 ENVIRONMENT = "cloud-dev"
 APPLICATION = "cloud-dev-portal"
+USER_POOL = "cloud-dev-portal"
 TEMPLATE = Path(__file__).resolve().parent.parent / "infra" / "full-stack.yaml"
 TAGS = [{"Key": "Project", "Value": "cloud-dev-portal"}, {"Key": "Environment", "Value": "dev"}]
 POLL_SECONDS = 15
@@ -66,10 +68,16 @@ def session_ended(error: ClientError) -> bool:
         code.startswith(("AccessDenied", "Unauthorized")) and "explicit deny" in str(error))
 
 
-def leftovers(cfn, eb) -> list[str]:
+def user_pool_id(idp) -> str | None:
+    return next((p["Id"] for p in idp.list_user_pools(MaxResults=60)["UserPools"] if p["Name"] == USER_POOL), None)
+
+
+def leftovers(cfn, eb, idp) -> list[str]:
     """What an interrupted delete can leave behind. Names match Lab 1's hand-built
     environment too, so nothing here proves these came from the stack."""
     found = []
+    if user_pool_id(idp):
+        found.append(f"Cognito user pool {USER_POOL}, with its users")
     if eb.describe_environments(EnvironmentNames=[ENVIRONMENT], IncludeDeleted=False)["Environments"]:
         found.append(f"Beanstalk environment {ENVIRONMENT}")
     if eb.describe_applications(ApplicationNames=[APPLICATION])["Applications"]:
@@ -79,7 +87,14 @@ def leftovers(cfn, eb) -> list[str]:
     return found
 
 
-def remove_leftovers(cfn, eb) -> None:
+def remove_leftovers(cfn, eb, idp) -> None:
+    pool = user_pool_id(idp)
+    if pool:
+        # A pool can't be deleted while it has a domain.
+        domain = idp.describe_user_pool(UserPoolId=pool)["UserPool"].get("Domain")
+        if domain:
+            idp.delete_user_pool_domain(Domain=domain, UserPoolId=pool)
+        idp.delete_user_pool(UserPoolId=pool)
     if eb.describe_environments(EnvironmentNames=[ENVIRONMENT], IncludeDeleted=False)["Environments"]:
         eb.terminate_environment(EnvironmentName=ENVIRONMENT)
     while eb.describe_environments(EnvironmentNames=[ENVIRONMENT], IncludeDeleted=False)["Environments"]:
@@ -91,8 +106,8 @@ def remove_leftovers(cfn, eb) -> None:
             cfn.delete_stack(StackName=stack["StackName"])
 
 
-def clear_leftovers(cfn, eb, confirmed: bool) -> int:
-    found = leftovers(cfn, eb)
+def clear_leftovers(cfn, eb, idp, confirmed: bool) -> int:
+    found = leftovers(cfn, eb, idp)
     if not found:
         return 0
     print("Found, with names this portal uses:\n  " + "\n  ".join(found))
@@ -100,8 +115,8 @@ def clear_leftovers(cfn, eb, confirmed: bool) -> int:
     if not confirmed and input("Remove them? Type remove to confirm: ").strip() != "remove":
         print("Left in place.")
         return 1
-    remove_leftovers(cfn, eb)
-    remaining = leftovers(cfn, eb)
+    remove_leftovers(cfn, eb, idp)
+    remaining = leftovers(cfn, eb, idp)
     print("Removed." if not remaining else "Still removing: " + ", ".join(remaining) + ". Run this again shortly.")
     return 0
 
@@ -157,12 +172,12 @@ def create(cfn, email: str) -> int:
     return 0
 
 
-def delete(cfn, eb, confirmed: bool) -> int:
+def delete(cfn, eb, idp, confirmed: bool) -> int:
     if not stack_info(cfn):
         print(f"There is no stack {STACK}.")
         # Not covered by --yes: with no stack, these could be a hand-built Lab 1.
-        return clear_leftovers(cfn, eb, confirmed=False)
-    if not confirmed and input(f"Delete {STACK} and ALL portal data? Type {STACK} to confirm: ").strip() != STACK:
+        return clear_leftovers(cfn, eb, idp, confirmed=False)
+    if not confirmed and input(f"Delete {STACK}, ALL portal data and all Cognito users? Type {STACK} to confirm: ").strip() != STACK:
         print("Nothing deleted.")
         return 1
     cfn.delete_stack(StackName=STACK)
@@ -171,14 +186,14 @@ def delete(cfn, eb, confirmed: bool) -> int:
         print("The delete failed; fix the reason above and run this again.")
         return 1
     print("The stack is gone.")
-    return clear_leftovers(cfn, eb, confirmed=True)
+    return clear_leftovers(cfn, eb, idp, confirmed=True)
 
 
-def status(cfn, eb) -> int:
+def status(cfn, eb, idp) -> int:
     info = stack_info(cfn)
     if not info:
         print(f"There is no stack {STACK}.")
-        for item in leftovers(cfn, eb):
+        for item in leftovers(cfn, eb, idp):
             print(f"Still there: {item}. Run delete to remove it.")
         return 0
     print(info["StackStatus"])
@@ -188,7 +203,7 @@ def status(cfn, eb) -> int:
     return 0
 
 
-def main(argv: list[str], cfn=None, eb=None) -> int:
+def main(argv: list[str], cfn=None, eb=None, idp=None) -> int:
     action, rest = (argv[0], argv[1:]) if argv else ("", [])
     if not (action == "create" and len(rest) == 1 and "@" in rest[0]
             or action == "status" and not rest
@@ -197,12 +212,13 @@ def main(argv: list[str], cfn=None, eb=None) -> int:
         return 2
     cfn = cfn or boto3.client("cloudformation", region_name=REGION)
     eb = eb or boto3.client("elasticbeanstalk", region_name=REGION)
+    idp = idp or boto3.client("cognito-idp", region_name=REGION)
     try:
         if action == "create":
             return create(cfn, rest[0])
         if action == "delete":
-            return delete(cfn, eb, rest == ["--yes"])
-        return status(cfn, eb)
+            return delete(cfn, eb, idp, rest == ["--yes"])
+        return status(cfn, eb, idp)
     except NoCredentialsError:
         print(SESSION_ENDED)
         return 1

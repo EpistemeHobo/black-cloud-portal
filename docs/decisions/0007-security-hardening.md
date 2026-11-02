@@ -11,7 +11,7 @@ The first AWS deployment (decisions 0005, 0006) worked, but took shortcuts: the 
 1. **No SSH.** No key pair on the Beanstalk environment; shells go through Session Manager.
 2. **The app's own database user.** `python -m app.app_db_user` creates `portal_app` and a `portal` database only it may connect to, copies the data, and stores the password in SSM. The master password is no longer configured anywhere.
 3. **Secrets in SSM Parameter Store** as SecureStrings (`db-password`, `jwt-secret-key`, `origin-verify-secret`), linked to the Beanstalk properties by ARN, so the configuration shows no secret.
-4. **No seed admin password** after the first start.
+4. **No seed admin password** after the first start. With Cognito (decision 0008) there's none at all.
 5. **S3 refuses plain HTTP** (bucket policy).
 6. **HTTPS through API Gateway.** The API passes the portal's pages to Beanstalk and overwrites an `X-Origin-Verify` header with a shared secret; the app refuses requests without it (except `/api/health`), so the HTTPS address is the only way in. Cookies are `Secure`. The app's trailing-slash redirects are made relative, so they stay on the HTTPS address.
 7. **The waking-up page's public calls** return only `database_ready`, `app_ready` and `ready`; the launcher moves to `/launch`. Those routes are throttled tightly (they can start servers); the portal's pages get room for ~20 files per page load.

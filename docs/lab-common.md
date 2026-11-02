@@ -9,6 +9,7 @@ Shared by both labs: [Lab 1, by hand](lab-1-by-hand.md) and [Lab 2, CloudFormati
 - A session lasts 4 hours, and its end needs some care: see the next section.
 - Watch the budget shown on the lab page. Aurora costs the most: see [Costs](#costs).
 - **CloudFront and Aurora Serverless are blocked.** The labs use API Gateway and a provisioned `db.t3.medium` instead.
+- **Cognito works,** including its sign-in pages and built-in email, within its limit of 50 emails a day.
 
 Start the lab, wait for the dot to turn green, then click **AWS** to open the console. Check the region in the top-right corner says N. Virginia.
 
@@ -44,7 +45,7 @@ If Session Manager can't reach a running instance after a restart, its agent may
 
 ### If a delete was cut off
 
-Start the lab, copy the new keys, and look: CloudFormation for a red `awseb-…` stack or `gargantua` in `DELETE_FAILED`, and Elastic Beanstalk for an environment `cloud-dev`. If `gargantua` is still `DELETE_IN_PROGRESS`, wait for it. Then:
+Start the lab, copy the new keys, and look: CloudFormation for a red `awseb-…` stack or `gargantua` in `DELETE_FAILED`, Elastic Beanstalk for an environment `cloud-dev`, and Cognito for a user pool `cloud-dev-portal`. If `gargantua` is still `DELETE_IN_PROGRESS`, wait for it. Then:
 
 ```bash
 python scripts/portal_stack.py delete
@@ -55,6 +56,7 @@ It deletes the stack if it's still there, then lists any leftovers and removes t
 1. Elastic Beanstalk → environment `cloud-dev` → **Actions → Terminate environment**. The `awseb-…` stack goes with it. This took under a minute with no instance left.
 2. Elastic Beanstalk → **Applications** → delete `cloud-dev-portal`.
 3. If `gargantua` or an `awseb-…` stack still shows `DELETE_FAILED`: select it → **Delete** again.
+4. Cognito → user pool `cloud-dev-portal`, if it's still there: delete its domain, then the pool. Its users go with it.
 
 ## Costs
 
@@ -63,6 +65,7 @@ It deletes the stack if it's still there, then lists any leftovers and removes t
 - **AWS starts a stopped cluster again by itself after 7 days:** stop it again if you haven't worked on the project for a week.
 - **Single-instance Beanstalk** avoids paying for a load balancer.
 - **Never create a NAT Gateway:** it bills by the hour and isn't needed here.
+- **Cognito** costs nothing at this scale: its free tier covers thousands of monthly users. A pool costs nothing while nobody signs in.
 - **API Gateway, Lambda, EventBridge and SSM** cost cents a month at this scale. Each secret in Secrets Manager (Lab 2) is $0.40 a month, charged only for the time it exists.
 
 ## Tags

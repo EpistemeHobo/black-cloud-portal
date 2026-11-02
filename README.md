@@ -74,8 +74,9 @@ All settings are listed in `.env.example`.
 | `ALLOWED_HOSTS` | Hostnames the app answers to | `devportal.cloud.internal` |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | The first admin, created at start-up | `it.lead@example.org` |
 | `SUPPORT_EMAIL` | Contact on the sign-in page, by email and Webex; defaults to the seed admin | `it.lead@example.org` |
-| `SMTP_*`, `MAIL_FROM` | Email for sign-up verification and password reset (Resend works) | see `.env.example` |
-| `PUBLIC_BASE_URL` | The portal's address, for links in emails | `https://devportal.cloud.internal` |
+| `SMTP_*`, `MAIL_FROM` | Email for sign-up verification and password reset (Resend works); unused with Cognito | see `.env.example` |
+| `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `COGNITO_DOMAIN` | Sign-in through a Cognito user pool, when all three are set; empty keeps the portal's own passwords | `us-east-1_AbC123` |
+| `PUBLIC_BASE_URL` | The portal's address, for links in emails and Cognito's return address | `https://devportal.cloud.internal` |
 | `ALLOWED_EMAIL_DOMAINS` | Only these domains may sign up; empty allows any | `nstda.or.th` |
 | `KB_BASE_URL` | Knowledge base address for checklist links | `https://kb.cloud.internal` |
 

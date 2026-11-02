@@ -1,13 +1,14 @@
 # Commands: build, switch and delete the portal
 
-A short guide to the two scripts that control the portal on AWS. [Lab 2](lab-2-cloudformation.md) explains how the pieces work and how to do the same things in the console. Timings are from [real test runs](stack-test-log.md).
+A short guide to the scripts that control the portal on AWS. [Lab 2](lab-2-cloudformation.md) explains how the pieces work and how to do the same things in the console. Timings are from [real test runs](stack-test-log.md).
 
 | Script | What it does |
 | --- | --- |
 | `scripts/portal_stack.py` | Builds the whole portal, or deletes all of it |
 | `scripts/portal_mode.py` | Switches a portal that already exists between active and hibernate, or wakes it |
+| `scripts/build_signin_background.py` | Rebuilds the twinkling dots on Cognito's sign-in page and puts them in the template. Only needed to change their look or speed |
 
-Both run on **your computer** and send requests to AWS. AWS does the work, so closing the terminal doesn't stop a build or delete. You only lose the progress display.
+The first two run on **your computer** and send requests to AWS. AWS does the work, so closing the terminal doesn't stop a build or delete. You only lose the progress display.
 
 ## Before you start
 
@@ -40,7 +41,7 @@ python scripts/portal_stack.py create you@example.org
 Builds everything in about 12 minutes, with your email as the first admin. Check that the session has at least 30 minutes left. When it finishes, it prints the portal's address and the launcher link:
 
 1. Find the email from Cognito with your temporary password. Check the spam folder too.
-2. Open the portal's address, press **เข้าสู่ระบบ**, sign in on Cognito's page with your email and that password, and choose a new one.
+2. Open the portal's address, press **เข้าสู่ระบบ**, sign in on Cognito's page with your email and that password, and choose a new one. The email's sentence ends with a full stop, which isn't part of the password.
 
 ```bash
 python scripts/portal_stack.py status
@@ -52,9 +53,9 @@ Shows whether the stack exists and whether the portal answers.
 python scripts/portal_stack.py delete
 ```
 
-Removes everything the stack built, in about 11 to 17 minutes. **All portal data is lost.** It asks you to type `gargantua` to confirm. Start it with **at least 30 minutes left** in the session. To practise, delete and create again as often as you like.
+Removes everything the stack built, in about 11 to 17 minutes. **All portal data and Cognito users are lost:** the users live inside the stack's user pool, so you don't delete them separately, and the next build starts with only your admin. It asks you to type `gargantua` to confirm. Start it with **at least 30 minutes left** in the session. To practise, delete and create again as often as you like.
 
-If the session ended partway, start the lab, copy the new keys and run `delete` again. It finds what was left behind, such as the Beanstalk environment, and removes it after you type `remove`. `status` lists them too. If you built those by hand in Lab 1, answer no.
+If the session ended partway, start the lab, copy the new keys and run `delete` again. It finds what was left behind, such as the Beanstalk environment or the user pool, and removes it after you type `remove`. `status` lists them too. If you built those by hand in Lab 1, answer no.
 
 ## Switch modes
 
@@ -122,4 +123,5 @@ Aurora and the instance cost about **$2.50 a day while running**, even with no l
 | `… doesn't answer: the app failed to start` | The stack built, but the app didn't start | Beanstalk → `cloud-dev` → **Events** and **Logs** |
 | `ResourceNotFoundException` … `cloud-dev-portal-mode` from `portal_mode.py` | There's no stack | Run `portal_stack.py create` first |
 | `The stack failed` | Building stopped, and everything was removed | CloudFormation → filter **Deleted** stacks → `gargantua` → **Events**; a name conflict with hand-built resources is a common cause |
+| Cognito's page says `Incorrect username or password`, or its address doesn't load | See [When something goes wrong](lab-common.md#when-something-goes-wrong) | Most often a full stop copied from the email |
 | The portal doesn't answer after a lab restart | The instance may be stuck: see [When a lab session ends](lab-common.md#when-a-lab-session-ends) | Replace the instance, as described there |

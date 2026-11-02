@@ -4,7 +4,7 @@
 
 ## Overview
 
-A web app with a Python (FastAPI) backend and a Next.js frontend, packaged as one Docker container. The backend serves both the API and the static frontend. Data is in SQLite on a Kubernetes volume. Users sign in with the portal's own email-and-password accounts; email goes out through SMTP (Resend).
+A web app with a Python (FastAPI) backend and a Next.js frontend, packaged as one Docker container. The backend serves both the API and the static frontend. Data is in SQLite on a Kubernetes volume. Users sign in with the portal's own email-and-password accounts, with email going out through SMTP (Resend), or on AWS through a Cognito user pool.
 
 ## On AWS (class project)
 
@@ -13,8 +13,10 @@ Beanstalk runs the container; data is in Aurora PostgreSQL and attached files in
 ```mermaid
 flowchart LR
     User[Browser] -->|HTTPS| API[API Gateway]
+    User -->|sign in, sign up| Cog[Cognito's pages]
     API -->|pages + secret header| EB[Elastic Beanstalk: portal container]
     API -->|/launch, /_wake| Fn[Lambda: wake and sleep]
+    EB -->|one-time code for a token| Cog
     EB --> Aurora[(Aurora PostgreSQL)]
     EB --> S3[(S3: guide files)]
     Fn --> Aurora
@@ -63,13 +65,14 @@ The data model is in [data-model.md](data-model.md).
 - A system's owners and developers can edit it. Admins can edit everything and manage checklist items.
 - Confidential fields (server or location, data storage location, backup details, known vulnerabilities) are shown only to the system's owners, developers and admins.
 - Any signed-in user can add a review note.
-- The first admin comes from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`. Without SMTP settings (local development), emails are written to the server log.
+- The first admin comes from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`, or with Cognito from `SEED_ADMIN_EMAIL` plus a Cognito user with that email. Without SMTP settings (local development), emails are written to the server log.
 
 ## Connections to other systems
 
 | System | What we use it for |
 | --- | --- |
 | Resend (SMTP) | Emails to confirm an address at sign-up and to reset a password; nothing else |
+| Amazon Cognito (on AWS) | Sign-in and sign-up pages, passwords and their emails. Cognito's sign-in page styling is in `infra/full-stack.yaml`, and its dots come from `scripts/build_signin_background.py` |
 | Knowledge base site | Each checklist item links to the page that explains it |
 
 ## Settings

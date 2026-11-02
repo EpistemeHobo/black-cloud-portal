@@ -489,7 +489,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST https://YOUR-INVOKE-URL/api/aut
 
 Do this at the end, or before [Lab 2](lab-2-cloudformation.md), which needs the same names. In this order, because each depends on the next:
 
-0. **Part 4:** Cognito → delete the user pool `cloud-dev-portal`. Its domain must be deleted first.
+0. **Part 4:** Cognito → delete the domain of the user pool `cloud-dev-portal`, then the pool. Its users go with it, so you don't delete them one by one.
 
 1. **Beanstalk:** terminate the environment `cloud-dev`, then delete the application `cloud-dev-portal`. Wait until it's gone (up to about 20 minutes).
 2. **Part 3:** API Gateway → delete `cloud-dev-portal-wake`. EventBridge → delete both rules. Lambda → delete `cloud-dev-portal-mode`.
@@ -505,3 +505,4 @@ Do this at the end, or before [Lab 2](lab-2-cloudformation.md), which needs the 
 3. Which secrets could an attacker read from the Beanstalk configuration page, before and after step 7c?
 4. Why is the function's mode kept in SSM, and not in a variable in the code?
 5. Which pieces cost money while nobody is using the portal? Which don't, and why?
+6. After Part 4, what could an attacker who steals the portal's database learn about passwords, compared with before?
