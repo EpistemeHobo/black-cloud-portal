@@ -20,7 +20,7 @@ git clone https://github.com/EpistemeHobo/black-cloud-portal.git
 cd black-cloud-portal
 ```
 ```bash
-pip install boto3
+python -m pip install boto3
 ```
 
 **Every lab session**, because the keys change each time:
@@ -52,7 +52,9 @@ Shows whether the stack exists and whether the portal answers.
 python scripts/portal_stack.py delete
 ```
 
-Removes everything the stack built, in about 11 to 17 minutes. **All portal data is lost.** It asks you to type `gargantua` to confirm. To practise, delete and create again as often as you like.
+Removes everything the stack built, in about 11 to 17 minutes. **All portal data is lost.** It asks you to type `gargantua` to confirm. Start it with **at least 30 minutes left** in the session. To practise, delete and create again as often as you like.
+
+If the session ended partway, start the lab, copy the new keys and run `delete` again. It finds what was left behind, such as the Beanstalk environment, and removes it after you type `remove`. `status` lists them too. If you built those by hand in Lab 1, answer no.
 
 ## Switch modes
 
@@ -114,8 +116,8 @@ Aurora and the instance cost about **$2.50 a day while running**, even with no l
 
 | Message | What it means | Do this |
 | --- | --- | --- |
-| `explicit deny` … `voc-cancel-cred` | The lab session ended, or the keys are from an old session | Start the lab and copy the new keys |
-| `Unable to locate credentials` | No keys saved | Do "Every lab session" above |
+| `AWS refused the request: your lab session has ended…` | The lab session ended, or the keys are from an old session | Start the lab, copy the new keys, and run the same command again |
+| `ModuleNotFoundError: No module named 'boto3'` | This terminal's Python doesn't have the AWS library, common with Anaconda's `(base)` | `python -m pip install boto3` |
 | `Stack gargantua already exists` | It was already built | Use it, or run `delete` first |
 | `… doesn't answer: the app failed to start` | The stack built, but the app didn't start | Beanstalk → `cloud-dev` → **Events** and **Logs** |
 | `ResourceNotFoundException` … `cloud-dev-portal-mode` from `portal_mode.py` | There's no stack | Run `portal_stack.py create` first |

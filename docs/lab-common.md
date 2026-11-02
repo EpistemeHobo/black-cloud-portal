@@ -20,6 +20,7 @@ What happens when a session ends matters more than it looks:
 - **The instance is lost and replaced, and the replacement can be left without the app.** We saw this happen: the session ended, Beanstalk's instance group launched a new instance, and that instance got `403` from S3 every hour, so it never installed the app. It kept running, and billing, with nothing on it. It didn't recover by itself after the lab restarted.
 - **Beanstalk still shows Green,** because Basic health only checks that the instance is alive. Check the portal's address, not the colour.
 - **Aurora keeps running and billing.**
+- **Anything in progress can stop partway.** CloudFormation works with your session's permissions. We started a stack delete about 2 minutes before the end: Beanstalk's part failed with `not authorized`, the rest carried on, and the stack disappeared and looked done while its Beanstalk environment, application and a `DELETE_FAILED` stack stayed behind. So **start a build or delete with at least 30 minutes left**, and [check afterwards](#if-a-delete-was-cut-off).
 - **`LabRole` appears to be blocked too** while the session is off, as those 403s suggest. So don't count on anything that uses it, such as the midnight rule and the idle check, to run with no session open. (Not tested directly for the Lambda function.)
 
 **Before the session ends** (the lab page shows the time left), do one of these:
@@ -40,6 +41,20 @@ aws autoscaling terminate-instance-in-auto-scaling-group --instance-id <instance
 ```
 
 If Session Manager can't reach a running instance after a restart, its agent may have failed to register during boot: **Reboot** the instance, or replace it the same way.
+
+### If a delete was cut off
+
+Start the lab, copy the new keys, and look: CloudFormation for a red `awseb-…` stack or `gargantua` in `DELETE_FAILED`, and Elastic Beanstalk for an environment `cloud-dev`. If `gargantua` is still `DELETE_IN_PROGRESS`, wait for it. Then:
+
+```bash
+python scripts/portal_stack.py delete
+```
+
+It deletes the stack if it's still there, then lists any leftovers and removes them after you confirm. In the console, the same is:
+
+1. Elastic Beanstalk → environment `cloud-dev` → **Actions → Terminate environment**. The `awseb-…` stack goes with it. This took under a minute with no instance left.
+2. Elastic Beanstalk → **Applications** → delete `cloud-dev-portal`.
+3. If `gargantua` or an `awseb-…` stack still shows `DELETE_FAILED`: select it → **Delete** again.
 
 ## Costs
 
@@ -78,7 +93,8 @@ Lab page → **AWS Details → AWS CLI: Show** → copy the block over everythin
 
 | Symptom | Likely cause |
 | --- | --- |
-| Everything fails with `explicit deny` … `voc-cancel-cred` | The lab session ended, or the tab or keys are from an old session. Start the lab, reopen the console from the lab page, and copy the new keys |
+| Everything fails with `explicit deny`, mentioning `voc-cancel-cred` or a `service control policy` | The lab session ended, or the tab or keys are from an old session. Start the lab, reopen the console from the lab page, and copy the new keys |
+| A stack is gone, but a red `awseb-…` stack or a `cloud-dev` environment remains | A delete was cut off by the session's end: see [If a delete was cut off](#if-a-delete-was-cut-off) |
 | Connection refused or reset while Beanstalk shows Green | The instance is stuck without the app, usually after a lab session ended. Replace it: see [When a lab session ends](#when-a-lab-session-ends) |
 | A redeploy reports success in seconds but the portal stays down | Same cause: replace the instance |
 | The Beanstalk address answers "เปิดพอร์ทัลผ่านที่อยู่ HTTPS ของพอร์ทัล" | Expected once the app is locked to its HTTPS address: use that address. A 403 at the HTTPS address too means the secret in API Gateway differs from the app's |

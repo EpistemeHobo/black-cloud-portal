@@ -38,6 +38,20 @@ Inside the final build: database cluster 36 s, database instance 5 min 9 s, Bean
 
 "Nothing left" means: no docs bucket, database, security groups, secrets or functions. From step 13 on, the parameter `/cloud-dev-portal/woken-at` remains, since the function creates it itself rather than the stack; it's harmless, and the next build reuses it. Beanstalk's own bucket also remains.
 
+## A session ending during a delete
+
+An unplanned test, on the same day. The session's keys dated from 11:40, so it ended around 15:38.
+
+| # | Step | Time | Result |
+| --- | --- | --- | --- |
+| 18 | Delete started (script), about 2 minutes before the end | 15:36 | Accepted |
+| 19 | Session cut off | 15:38 | The script crashed with `AccessDenied`. Beanstalk's stack `DELETE_FAILED`: `not authorized to perform: autoscaling:DescribeAutoScalingGroups`. The instance had already terminated |
+| 20 | Lab restarted, new keys | 15:42 | `gargantua` still `DELETE_IN_PROGRESS`, and still removing resources |
+| 21 | `gargantua` disappeared | 15:51 | **Looked done, but wasn't:** environment `cloud-dev`, application and the failed `awseb-…` stack remained. Aurora, bucket, secrets, function and security groups were gone |
+| 22 | Terminated the environment, deleted the application | 15:52:37 to 15:53:22 | Pass, 45 seconds: nothing left apart from `woken-at` |
+
+The script now gives a clear message when this happens, and finds and removes leftovers. That handling has been tested with AWS faked; on real AWS, only the case with nothing left over has been run.
+
 ## What step 7 checked
 
 | Check | Result |
@@ -58,4 +72,4 @@ Inside the final build: database cluster 36 s, database instance 5 min 9 s, Bean
 
 - **Signing in through a browser,** and attaching a `.md` file through the portal's pages. Step 7 tested S3 from inside the app's container, not through the page.
 - **The idle check and the midnight rule firing by themselves.** Steps 8 and 15 sent the same `hibernate` message by hand. The idle decision has unit tests only.
-- **A lab session ending with the stack in place,** including whether `LabRole` works with no session open.
+- **A lab session ending with the stack just sitting there,** and whether `LabRole` works with no session open.
