@@ -54,7 +54,7 @@ The script now gives a clear message when this happens, and finds and removes le
 
 ## Cognito
 
-The app on `localhost`, with a throwaway database, against a real user pool in the Learner Lab, on the same day. **The stack hasn't been built with Cognito yet;** the template has only passed CloudFormation's validation.
+Steps 23 to 31 ran the app on `localhost`, with a throwaway database, against a real user pool in the Learner Lab, on the same day. Steps 32 and 33 used the real stack.
 
 | # | Step | Time | Result |
 | --- | --- | --- | --- |
@@ -67,6 +67,8 @@ The app on `localhost`, with a throwaway database, against a real user pool in t
 | 29 | Admin approves the new account | 19:12 | Pass: `active`, not admin |
 | 30 | Apply the portal's palette to Cognito's pages (API) | 19:15 | Pass: the sign-in page shows it. The same settings in the template have only passed validation |
 | 31 | Upload the twinkling dots as an animated SVG (API) | 19:18 to 19:25 | Pass: the dots blink on Cognito's page. Cognito refuses `<use>`, so the file uses patterns. A new upload took about 2 minutes to appear. Smoothness on a real screen not measured: the test browser was hidden, which slows animation |
+| 32 | Build the stack with Cognito (script) | 19:54:36 to 20:06:50 | Pass, 12 min 14 s: no failed resources, and the first admin user was created |
+| 33 | Follow Lab 2's checkpoint in a browser, over the HTTPS address | 20:07 to 20:11 | Reported as passing by the person who followed it |
 
 Automated tests, with Cognito faked, cover forged, expired and misdirected tokens, unverified addresses, a callback from another browser, and a second Cognito user claiming a linked address. Faked tests don't prove the same against real Cognito.
 
@@ -88,8 +90,7 @@ Automated tests, with Cognito faked, cover forged, expired and misdirected token
 
 ## Not tested
 
-- **The stack with Cognito:** the `FirstAdminUser` resource, and signing in over the HTTPS address.
-- **Signing in as the approved account, and signing out through Cognito,** against real Cognito.
+- **Signing in as the approved account, and signing out through Cognito.** Lab 2's checkpoint doesn't include them, so they haven't been confirmed against real Cognito.
 - **Attaching a `.md` file through the portal's pages.** Step 7 tested S3 from inside the app's container, not through the page.
 - **The idle check and the midnight rule firing by themselves.** Steps 8 and 15 sent the same `hibernate` message by hand. The idle decision has unit tests only.
 - **A lab session ending with the stack just sitting there,** and whether `LabRole` works with no session open.

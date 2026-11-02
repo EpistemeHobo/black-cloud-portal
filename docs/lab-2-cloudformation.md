@@ -2,7 +2,7 @@
 
 Build the whole portal from one file, then delete all of it with one button. [Lab 1](lab-1-by-hand.md) builds the same system by hand.
 
-**Time:** about 12 minutes to build, 11 to 17 to delete ([measured](stack-test-log.md)). **Tested:** the stack without Cognito, from start to finish. Cognito was tested on its own against the running app ([log](stack-test-log.md#cognito)); the stack hasn't yet been built with it. Read [Rules of the Learner Lab](lab-common.md#rules-of-the-learner-lab) and [When a lab session ends](lab-common.md#when-a-lab-session-ends) first.
+**Time:** about 12 minutes to build, 11 to 17 to delete ([measured](stack-test-log.md)). **Tested:** yes, from start to finish, with Cognito ([log](stack-test-log.md#cognito)). Read [Rules of the Learner Lab](lab-common.md#rules-of-the-learner-lab) and [When a lab session ends](lab-common.md#when-a-lab-session-ends) first.
 
 ## The idea
 

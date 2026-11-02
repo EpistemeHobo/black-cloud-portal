@@ -29,6 +29,8 @@ PEAK = sum(w[3] for w in WAVES)
 TWINKLE_SECONDS = [1.05, 1.7, 0.85, 1.4, 1.85, 0.98, 1.53, 1.2]
 # (opacity, colour, width, halo width)
 LEVELS = [(0.3, "#8f9cff", 2.2, 0), (0.5, "#a9b4ff", 2.2, 0), (0.75, "#cdd3ff", 2.2, 0), (1, "#fff", 2.4, 7)]
+# A dark layer over everything: raise it for a darker page, dots and glow alike.
+DARKEN = 0.35
 
 
 def rhythm(x: int, y: int, width: int, height: int, shift: float) -> float:
@@ -83,7 +85,8 @@ def build_svg() -> str:
         '<radialGradient id="r" cx=".95" cy=".45" r=".45"><stop offset="0" stop-color="#3b3056" stop-opacity=".5"/>'
         f'<stop offset="1" stop-color="#3b3056" stop-opacity="0"/></radialGradient>{patterns}</defs>'
         f'<rect width="{VIEW_W}" height="{VIEW_H}" fill="url(#b)"/><rect width="{VIEW_W}" height="{VIEW_H}" fill="url(#l)"/>'
-        f'<rect width="{VIEW_W}" height="{VIEW_H}" fill="url(#r)"/>{layers}</svg>'
+        f'<rect width="{VIEW_W}" height="{VIEW_H}" fill="url(#r)"/>{layers}'
+        f'<rect width="{VIEW_W}" height="{VIEW_H}" fill="#05060b" opacity="{DARKEN}"/></svg>'
     )
 
 
