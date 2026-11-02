@@ -28,5 +28,6 @@ Two modes, kept in SSM Parameter Store and switched with one Lambda function (`c
 - Waking takes 5 to 10 minutes, mostly Aurora starting; the instance rebuilds the image meanwhile. Building the image into ECR would shorten the instance's part.
 - While asleep, Beanstalk reports the environment as unhealthy, and deploys fail until it is woken.
 - The link to share is the launcher, not the Beanstalk address: the Beanstalk address doesn't answer while the portal sleeps.
+- Learner Lab appears to block `LabRole` while no session is open, so the idle check and the midnight rule may not run then, and an instance replaced during that time is left without the app. Switch to hibernate before a session ends (guide: "When a lab session ends").
 - Anyone with the launcher link can wake the portal; API Gateway throttling limits the calls, and it sleeps again after 30 idle minutes.
 - The portal itself stays on plain HTTP (only the launcher has HTTPS).

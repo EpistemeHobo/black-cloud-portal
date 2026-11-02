@@ -15,10 +15,38 @@ flowchart LR
 
 - Work in **us-east-1** (N. Virginia). Other regions are blocked.
 - You can't create IAM roles. Wherever AWS asks for a role, pick **LabRole**; for EC2 it's **LabInstanceProfile**.
-- A session lasts 4 hours. When it ends, EC2 instances stop and start again with the next session. Aurora and S3 keep running and keep costing money: stop Aurora yourself after each work session (see [Saving budget](#saving-budget)).
+- A session lasts 4 hours, and its end needs some care: see [When a lab session ends](#when-a-lab-session-ends).
 - Watch the budget shown on the lab page. Aurora costs the most; see [Saving budget](#saving-budget).
 
 Start the lab, wait for the dot to turn green, then click **AWS** to open the console. Check the region in the top-right corner says N. Virginia.
+
+## When a lab session ends
+
+A session lasts 4 hours. What happens when it ends matters more than it looks:
+
+- **Your keys and console tabs stop working.** Every call fails with `explicit deny … voc-cancel-cred`.
+- **The instance is lost and replaced, and the replacement can be left without the app.** We saw this happen: the session ended, Beanstalk's instance group launched a new instance, and that instance got `403` from S3 every hour, so it never installed the app. It kept running, and billing, with nothing on it. It didn't recover by itself after the lab restarted.
+- **Beanstalk still shows Green,** because Basic health only checks that the instance is alive. Check the portal's address, not the colour.
+- **Aurora keeps running and billing.**
+- **`LabRole` appears to be blocked too** while the session is off, as those 403s suggest. So don't count on anything that uses it, such as the midnight rule and the idle check, to run with no session open. (Not tested directly for the Lambda function.)
+
+**Before the session ends** (the lab page shows the time left):
+
+- Stop Aurora: RDS → `portal-db` → **Actions → Stop temporarily**.
+- Once [hibernate mode](#active-and-hibernate-modes) is set up, run the `hibernate` switch instead. It stops Aurora and sets the instance count to 0, so no replacement is launched.
+
+**After starting the lab again:**
+
+1. Wait for the green dot, then open the console **from the lab page**. A tab left open from the last session keeps showing `voc-cancel-cred` errors.
+2. Copy the new keys into `~/.aws/credentials` if you use the CLI ([how](#using-the-aws-cli-from-your-computer)).
+3. Start Aurora if it's stopped, and wait for **Available**.
+4. Open the portal's address. If it doesn't answer (connection refused or reset) while Beanstalk shows Green, the instance is stuck. **Redeploying doesn't help:** the deploy reports success in seconds, because the instance never finished its first setup. **Replace the instance:** EC2 → Instances → select the environment's instance → **Instance state → Terminate**. It holds no data (that's in Aurora and S3). The group launches a new one, which installs the app from scratch in about 5 minutes. Or from the terminal:
+
+```bash
+aws autoscaling terminate-instance-in-auto-scaling-group --instance-id <instance id> --no-should-decrement-desired-capacity
+```
+
+   If Session Manager can't reach a running instance after a restart, its agent may have failed to register during boot: **Reboot** the instance, or replace it the same way.
 
 ## Tags
 
@@ -283,7 +311,7 @@ flowchart LR
 - **The launcher link** is that address plus `/launch`: share it. While the portal is awake it forwards straight to the portal; while it sleeps it shows the waking-up page.
 - **The waking-up page** asks the Lambda function to start Aurora and the Beanstalk instance, checks every 10 seconds, and forwards to the portal when both are up.
 - **EventBridge** runs the function every 15 minutes. In hibernate mode it asks the portal how long it has been idle (`/api/health` reports it) and puts it to sleep after 30 minutes. In active mode it only makes sure everything is still on.
-- **At midnight**, a second EventBridge rule switches to hibernate and stops everything, whatever the mode: a safety net in case active mode was left on after a presentation.
+- **At midnight**, a second EventBridge rule switches to hibernate and stops everything, whatever the mode: a safety net in case active mode was left on after a presentation. It may not run while no lab session is open ([why](#when-a-lab-session-ends)), so before a session ends, run the `hibernate` switch yourself.
 - **The mode** is kept in SSM Parameter Store, `/cloud-dev-portal/mode`.
 - The code: [infra/portal_mode/](../infra/portal_mode/) (the function and the waking-up page; [infra/portal_mode.zip](../infra/portal_mode.zip) is the same, ready to upload, rebuilt with `python scripts/build_lambda_zip.py`), [infra/sleep-wake.yaml](../infra/sleep-wake.yaml) (CloudFormation), [scripts/portal_mode.py](../scripts/portal_mode.py).
 
@@ -474,7 +502,7 @@ aws cloudformation deploy --template-file infra/sleep-wake.yaml --stack-name clo
 
 - **In the console:** Lambda → `cloud-dev-portal-mode` → Test → choose the event → **Test**. The result shows the state (`database`, `app_instances`, `ready`).
 - **From the terminal:** `python scripts/portal_mode.py active` (or `hibernate`, `wake`, `status`).
-- **Presentation day:** switch to `active` at least 15 minutes before you start; back to `hibernate` afterwards. If you forget, the midnight rule does it for you.
+- **Presentation day:** switch to `active` at least 15 minutes before you start; back to `hibernate` afterwards. If you forget, the midnight rule does it for you, provided a lab session is still open.
 - **Development day:** stay in `hibernate`. Open the launcher link and wait on the waking-up page, or run `wake` while you get ready.
 
 ### Things to know
@@ -508,6 +536,8 @@ To run the portal locally against the real bucket, set `DOCS_BUCKET` in `backend
 | Portal shows database errors at the start of a session | Aurora is stopped: start it and wait for Available, or run `wake` |
 | The waking-up page never finishes | Read the function's logs (CloudWatch). A cluster still `stopping` can't start until it has stopped; the page keeps asking, so it continues by itself |
 | CloudFormation `deploy` fails creating the function | Check IAM → Roles for `LabRole` in your account |
-| Everything stopped after the lab timed out | Normal: start the lab again and EC2 comes back in a few minutes |
+| Connection refused or reset while Beanstalk shows Green | The instance is stuck without the app, usually after a lab session ended. Replace it: see [When a lab session ends](#when-a-lab-session-ends) |
+| A redeploy reports success in seconds but the portal stays down | Same cause: replace the instance |
+| Everything fails with `explicit deny` … `voc-cancel-cred` | The lab session ended, or the tab or keys are from an old session. Start the lab, reopen the console from the lab page, and copy the new keys |
 
 Where to read logs: Beanstalk → **Logs → Request logs → Full logs**. The app's output is under `var/log/eb-docker/containers/eb-current-app/`.
