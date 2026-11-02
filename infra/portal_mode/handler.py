@@ -1,4 +1,4 @@
-"""Active and hibernate modes for the portal on AWS (docs/aws-learner-lab.md).
+"""Active and hibernate modes for the portal on AWS (docs/lab-2-cloudformation.md).
 
 - active: Aurora and the Beanstalk instance stay on, for presentation days.
 - hibernate: both sleep after IDLE_MINUTES without visitors and wake when someone

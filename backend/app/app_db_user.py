@@ -14,7 +14,7 @@ up. It then
    it is never printed.
 
 Afterwards point the app at DB_USER=portal_app, DB_NAME=portal and the
-parameter (docs/aws-learner-lab.md, "Security hardening"). The master password
+parameter (docs/lab-1-by-hand.md, step 7b). The master password
 is then needed by nobody but you. The old copy of the tables is left untouched.
 
     python -m app.app_db_user --bootstrap

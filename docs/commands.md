@@ -1,6 +1,6 @@
 # Commands: build, switch and delete the portal
 
-A short guide to the two scripts that control the portal on AWS. [aws-learner-lab.md](aws-learner-lab.md) explains how the pieces work and how to do the same things in the console. Timings are from [real test runs](stack-test-log.md).
+A short guide to the two scripts that control the portal on AWS. [Lab 2](lab-2-cloudformation.md) explains how the pieces work and how to do the same things in the console. Timings are from [real test runs](stack-test-log.md).
 
 | Script | What it does |
 | --- | --- |
@@ -120,4 +120,4 @@ Aurora and the instance cost about **$2.50 a day while running**, even with no l
 | `… doesn't answer: the app failed to start` | The stack built, but the app didn't start | Beanstalk → `cloud-dev` → **Events** and **Logs** |
 | `ResourceNotFoundException` … `cloud-dev-portal-mode` from `portal_mode.py` | There's no stack | Run `portal_stack.py create` first |
 | `The stack failed` | Building stopped, and everything was removed | CloudFormation → filter **Deleted** stacks → `gargantua` → **Events**; a name conflict with hand-built resources is a common cause |
-| The portal doesn't answer after a lab restart | The instance may be stuck: see [When a lab session ends](aws-learner-lab.md#when-a-lab-session-ends) | Replace the instance, as described there |
+| The portal doesn't answer after a lab restart | The instance may be stuck: see [When a lab session ends](lab-common.md#when-a-lab-session-ends) | Replace the instance, as described there |

@@ -2,8 +2,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   Gargantua Developer Portal, everything from zero: network rules, S3, Aurora,
   secrets, Elastic Beanstalk, and the active/hibernate system with its HTTPS address.
-  Deleting this stack removes all of it, data included. Steps: docs/aws-learner-lab.md,
-  "Build everything with one stack".
+  Deleting this stack removes all of it, data included. Steps: docs/lab-2-cloudformation.md.
 
 Parameters:
   AdminEmail:

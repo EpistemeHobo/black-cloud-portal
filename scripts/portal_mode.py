@@ -6,7 +6,7 @@
     python scripts/portal_mode.py status
 
 Uses the AWS credentials from the Learner Lab page (AWS Details → AWS CLI) in
-~/.aws/credentials. Calls the cloud-dev-portal-mode function (infra/sleep-wake.yaml).
+~/.aws/credentials. Calls the cloud-dev-portal-mode function (infra/full-stack.yaml).
 """
 import json
 import sys

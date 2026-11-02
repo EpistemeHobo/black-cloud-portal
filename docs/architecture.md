@@ -8,7 +8,7 @@ A web app with a Python (FastAPI) backend and a Next.js frontend, packaged as on
 
 ## On AWS (class project)
 
-Beanstalk runs the container; data is in Aurora PostgreSQL and attached files in S3 (decision 0005). In hibernate mode a Lambda function puts Aurora and the instance to sleep when idle; the launcher link (API Gateway) wakes them and forwards to the portal (decision 0006). API Gateway is also the portal's HTTPS address; the app refuses requests that didn't come through it, signs in to Aurora as its own `portal_app` user, and gets its secrets from SSM Parameter Store (decision 0007). Setup: [aws-learner-lab.md](aws-learner-lab.md).
+Beanstalk runs the container; data is in Aurora PostgreSQL and attached files in S3 (decision 0005). In hibernate mode a Lambda function puts Aurora and the instance to sleep when idle; the launcher link (API Gateway) wakes them and forwards to the portal (decision 0006). API Gateway is also the portal's HTTPS address; the app refuses requests that didn't come through it, signs in to Aurora as its own `portal_app` user, and gets its secrets from SSM Parameter Store (decision 0007). Setup: [by hand](lab-1-by-hand.md) or [with CloudFormation](lab-2-cloudformation.md).
 
 ```mermaid
 flowchart LR

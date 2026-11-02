@@ -24,7 +24,7 @@ last_activity = time.monotonic()
 
 @router.get("/health")
 def health():
-    # idle_seconds lets the sleep job put an unused portal to sleep (docs/aws-learner-lab.md).
+    # idle_seconds lets the sleep job put an unused portal to sleep (docs/lab-common.md).
     return {"status": "ok", "idle_seconds": int(time.monotonic() - last_activity)}
 
 
