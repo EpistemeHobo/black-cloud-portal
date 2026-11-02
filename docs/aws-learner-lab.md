@@ -2,7 +2,7 @@
 
 *Last updated: 2026-11-01*
 
-How to run the portal on AWS with Elastic Beanstalk (the app), Aurora PostgreSQL (data) and S3 (the guide's markdown files). Cognito comes later; until then the portal keeps its own accounts and writes emails to the log.
+How to run the portal on AWS with Elastic Beanstalk (the app), Aurora PostgreSQL (data) and S3 (the guide's markdown files). Build it step by step to learn each piece, or all at once with [one CloudFormation stack](#build-everything-with-one-stack). Cognito comes later; until then the portal keeps its own accounts and writes emails to the log.
 
 ```mermaid
 flowchart LR
@@ -264,6 +264,50 @@ The portal's own address is plain `http://`: passwords and session cookies would
 
 - **Least-privilege IAM roles.** Learner Lab can't create roles, so the app and the mode function run as `LabRole`, which may do much more than they need. [infra/iam/](../infra/iam/) has the exact policies each should have in a real account.
 - **Encryption all the way to the app.** The browser–AWS leg is HTTPS; API Gateway → Beanstalk stays HTTP. Closing it needs a private VPC link, which needs a load balancer and a certificate for a domain you own, neither available here.
+
+## Build everything with one stack
+
+Steps 1 to 7 and the hibernate system, built by hand, take most of a day. [infra/full-stack.yaml](../infra/full-stack.yaml) describes all of it in one file: upload it, and CloudFormation builds the whole portal from nothing in about 25 minutes. **Delete the stack and everything it made is gone**, data included. So you can tear it down after each practice and build it again, paying only while it exists.
+
+Use **either** this **or** the hand-built version, not both: they use the same names (`portal-db`, `cloud-dev`, `portal-app-sg`…), so anything left from a hand-built setup makes the stack fail.
+
+**What it builds:** the two security groups, the private and versioned S3 bucket with its HTTPS-only policy, Aurora, generated secrets, the Beanstalk application and environment (no key pair, so no SSH), the Lambda function, the `mode` parameter, both EventBridge rules, and the API Gateway HTTPS address.
+
+**What differs from the hand-built version, and why:**
+
+| | By hand | This stack | Why |
+| --- | --- | --- | --- |
+| Secrets | SSM SecureStrings | **Secrets Manager** | CloudFormation can't create SecureStrings, but it can generate secrets here. Nobody ever types or sees them |
+| The app's database user | You run a script once | **The container creates it on start** | Nobody is there to run a script. The master password stays in its secret; the app gets only that secret's ARN |
+| Seed admin password | Removed after first sign-in | **Stays linked, in its secret** | Removing it would make the running environment differ from the template. The app ignores it once the account exists |
+| Code | You upload zips | **Fetched from GitHub** | A small function downloads the repository, which must be public, when the stack is created |
+
+### Create it
+
+1. Start the lab and open the console from the lab page, with at least **an hour** left in the session (the lab page shows the time).
+2. CloudFormation → **Create stack** → **With new resources (standard)** → *Choose an existing template* → **Upload a template file** → [infra/full-stack.yaml](../infra/full-stack.yaml) → **Next**.
+3. Stack name: **`gargantua`**. Parameters:
+   - `AdminEmail`: the email you'll sign in with. Required.
+   - `GitHubRepo`: your copy of the repository, if you forked it. It must be public.
+   - `DomainPrefix`: if `cloud-dev-portal` is taken, add your student ID.
+   - Leave the rest as they are.
+4. **Next** → Tags: `Project = cloud-dev-portal`, `Environment = dev`. Permissions: leave the IAM role empty. Stack failure options: **Delete all newly created resources**, so a failed attempt leaves nothing behind → **Next** → **Submit**.
+5. Watch the **Events** tab, with the newest at the top. Aurora takes about 10 minutes and Beanstalk about 10 more. The stack finishes with **CREATE_COMPLETE**.
+
+**Checkpoint.**
+
+1. **Outputs** → open `PortalUrl`: the Gargantua sign-in page over HTTPS. If it shows `Service Unavailable`, the app is still starting: try again in a few minutes.
+2. Secrets Manager → open the secret named in `AdminPasswordSecret` → **Retrieve secret value**. Sign in with `AdminEmail` and that password.
+3. Open a system's handover guide and attach a `.md` file: it appears in the bucket under `systems/`.
+4. Lambda → `cloud-dev-portal-mode` → **Test** tab: save and run the [switch events](#switching). `{"action": "status"}` should show `"ready": true`.
+
+### Reset: delete it
+
+CloudFormation → `gargantua` → **Delete**. It takes 10 to 20 minutes, removes everything above, and empties the bucket first. **All portal data is lost**, by design: there's no final snapshot. Check that the stack disappears from the list; if it shows **DELETE_FAILED**, open **Events** for the reason and press **Delete** again.
+
+CloudFormation doesn't remove these two things, which cost next to nothing: Beanstalk's own bucket `elasticbeanstalk-us-east-1-<account id>`, and the parameter `/cloud-dev-portal/woken-at`, which the function creates by itself.
+
+Delete the stack before the lab session ends if you're done, since Aurora bills about $2 a day while it exists ([more](#when-a-lab-session-ends)).
 
 ## Deploying a new version
 

@@ -16,6 +16,14 @@ up. It then
 Afterwards point the app at DB_USER=portal_app, DB_NAME=portal and the
 parameter (docs/aws-learner-lab.md, "Security hardening"). The master password
 is then needed by nobody but you. The old copy of the tables is left untouched.
+
+    python -m app.app_db_user --bootstrap
+
+is the version for a CloudFormation stack (infra/full-stack.yaml), where nobody is
+there to run the above. docker-entrypoint.sh calls it on every start, when
+DB_BOOTSTRAP_SECRET_ARN is set: with the master password from that secret it makes
+sure the role and database in the app's DB_* settings exist, with that password.
+There is nothing to copy; the app's password is the one it already has.
 """
 import argparse
 import os
@@ -24,7 +32,7 @@ import subprocess
 import sys
 
 from sqlalchemy import Integer, create_engine, func, select, text
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import URL, Engine, make_url
 
 from app import config
 from app.db import Base
@@ -55,7 +63,44 @@ def copy_rows(source: Engine, target: Engine) -> dict[str, int]:
     return counts
 
 
+def ensure_role_and_database(admin_url: URL, user: str, password: str, database: str) -> bool:
+    """Create the login role and the database only it may connect to, or give an
+    existing role this password. Returns whether the role already existed."""
+    from psycopg import sql
+
+    with create_engine(admin_url, isolation_level="AUTOCOMMIT").connect() as conn:
+        role, db = sql.Identifier(user), sql.Identifier(database)
+        raw = conn.connection.driver_connection
+        exists = conn.scalar(text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": user})
+        verb = "ALTER" if exists else "CREATE"
+        raw.execute(sql.SQL(verb + " ROLE {} WITH LOGIN PASSWORD {}").format(role, sql.Literal(password)))
+        # PostgreSQL 16+ lets you give a database to another role only if you may
+        # act as it; the master user already controls everything, so this adds nothing.
+        raw.execute(sql.SQL("GRANT {} TO CURRENT_USER").format(role))
+        if not conn.scalar(text("SELECT 1 FROM pg_database WHERE datname = :d"), {"d": database}):
+            raw.execute(sql.SQL("CREATE DATABASE {} OWNER {}").format(db, role))
+        # Only its owner (and the master user) may connect to the new database.
+        raw.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(db))
+    return bool(exists)
+
+
+def bootstrap() -> None:
+    import boto3
+
+    app_url = make_url(config.DATABASE_URL)
+    if app_url.get_backend_name() != "postgresql":
+        raise SystemExit("This sets up a PostgreSQL user; DATABASE_URL isn't PostgreSQL.")
+    master = boto3.client("secretsmanager", region_name=config.AWS_REGION).get_secret_value(
+        SecretId=os.environ["DB_BOOTSTRAP_SECRET_ARN"])["SecretString"]
+    admin_url = app_url.set(username=os.environ.get("DB_BOOTSTRAP_USER", "portal"),
+                            password=master, database="postgres")
+    ensure_role_and_database(admin_url, app_url.username, app_url.password, app_url.database)
+    print(f"Database {app_url.database} and role {app_url.username} are ready.")
+
+
 def main(argv: list[str]) -> None:
+    if argv == ["--bootstrap"]:
+        return bootstrap()
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--param", required=True, help="SSM parameter to store the new password in")
     parser.add_argument("--user", default="portal_app")
@@ -69,23 +114,9 @@ def main(argv: list[str]) -> None:
         raise SystemExit(f"The app already uses the database {args.database!r}.")
 
     import boto3
-    from psycopg import sql
 
     password = secrets.token_urlsafe(32)
-    admin = create_engine(admin_url, isolation_level="AUTOCOMMIT")
-    with admin.connect() as conn:
-        role, db = sql.Identifier(args.user), sql.Identifier(args.database)
-        raw = conn.connection.driver_connection
-        exists = conn.scalar(text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": args.user})
-        verb = "ALTER" if exists else "CREATE"
-        raw.execute(sql.SQL(verb + " ROLE {} WITH LOGIN PASSWORD {}").format(role, sql.Literal(password)))
-        # PostgreSQL 16+ lets you give a database to another role only if you may
-        # act as it; the master user already controls everything, so this adds nothing.
-        raw.execute(sql.SQL("GRANT {} TO CURRENT_USER").format(role))
-        if not conn.scalar(text("SELECT 1 FROM pg_database WHERE datname = :d"), {"d": args.database}):
-            raw.execute(sql.SQL("CREATE DATABASE {} OWNER {}").format(db, role))
-        # Only its owner (and the master user) may connect to the new database.
-        raw.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(db))
+    exists = ensure_role_and_database(admin_url, args.user, password, args.database)
     print(f"Role {args.user} {'given a new password' if exists else 'created'}; database {args.database} ready.")
 
     app_url = admin_url.set(username=args.user, password=password, database=args.database)

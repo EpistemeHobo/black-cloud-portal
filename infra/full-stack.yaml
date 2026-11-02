@@ -1,0 +1,391 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Gargantua Developer Portal, everything from zero: network rules, S3, Aurora,
+  secrets, Elastic Beanstalk, and the active/hibernate system with its HTTPS address.
+  Deleting this stack removes all of it, data included. Steps: docs/aws-learner-lab.md,
+  "Build everything with one stack".
+
+Parameters:
+  AdminEmail:
+    Type: String
+    AllowedPattern: "[^@ ]+@[^@ ]+"
+    Description: The first admin's sign-in email. The password is generated; see the AdminPasswordSecret output
+  GitHubRepo:
+    Type: String
+    Default: EpistemeHobo/black-cloud-portal
+    Description: Public GitHub repository (owner/name) to fetch the app and the function from
+  GitHubBranch:
+    Type: String
+    Default: main
+  DomainPrefix:
+    Type: String
+    Default: cloud-dev-portal
+    Description: Beanstalk address prefix, unique within the region; add your student ID if it's taken
+  InitialMode:
+    Type: String
+    Default: active
+    AllowedValues: [active, hibernate]
+    Description: Active, so nothing goes to sleep while the stack is being built
+  IdleMinutes:
+    Type: Number
+    Default: 30
+    Description: In hibernate mode, sleep after this many minutes without visitors
+  NightlyStopSchedule:
+    Type: String
+    Default: cron(0 17 * * ? *)
+    Description: When to switch to hibernate and stop everything, in UTC. The default is midnight in Thailand (UTC+7)
+
+Resources:
+  # ---------- Network rules (in the account's default VPC) ----------
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: portal-app-sg
+      GroupDescription: The portal instance, so the database can trust it
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: portal-db-sg
+      GroupDescription: Aurora, reachable only from the portal instance
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !GetAtt AppSecurityGroup.GroupId}
+
+  # ---------- Files ----------
+  DocsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub cloud-dev-portal-docs-${AWS::AccountId}
+      VersioningConfiguration: {Status: Enabled}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  DocsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DocsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: HttpsOnly
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: [!GetAtt DocsBucket.Arn, !Sub "${DocsBucket.Arn}/*"]
+            Condition: {Bool: {aws:SecureTransport: "false"}}
+
+  # Fetches the code from GitHub into the bucket when the stack is created. When
+  # the stack is deleted it empties the bucket, every version, so Delete can finish.
+  CodeFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Fetches the portal's code from GitHub into S3; empties the bucket on stack delete
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 300
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import io
+          import urllib.request
+          import zipfile
+
+          import boto3
+          import cfnresponse
+
+
+          def fetch(props):
+              url = f"https://github.com/{props['Repo']}/archive/refs/heads/{props['Branch']}.zip"
+              with urllib.request.urlopen(url, timeout=120) as response:
+                  source = zipfile.ZipFile(io.BytesIO(response.read()))
+              # GitHub puts everything in one top folder; Beanstalk wants the Dockerfile at the top.
+              top = source.namelist()[0]
+              bundle = io.BytesIO()
+              with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as out:
+                  for item in source.infolist():
+                      if not item.is_dir():
+                          out.writestr(item.filename[len(top):], source.read(item))
+              bucket = boto3.resource("s3").Bucket(props["Bucket"])
+              bucket.put_object(Key="deploy/portal.zip", Body=bundle.getvalue())
+              bucket.put_object(Key="deploy/portal_mode.zip", Body=source.read(top + "infra/portal_mode.zip"))
+
+
+          def handler(event, context):
+              props = event["ResourceProperties"]
+              try:
+                  if event["RequestType"] == "Delete":
+                      boto3.resource("s3").Bucket(props["Bucket"]).object_versions.delete()
+                  else:
+                      fetch(props)
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, "portal-code")
+              except Exception as error:
+                  print(error)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, "portal-code", reason=str(error))
+  Code:
+    Type: Custom::PortalCode
+    DependsOn: DocsBucketPolicy
+    Properties:
+      ServiceToken: !GetAtt CodeFunction.Arn
+      Bucket: !Ref DocsBucket
+      Repo: !Ref GitHubRepo
+      Branch: !Ref GitHubBranch
+
+  # ---------- Secrets: generated here, so no person ever chooses or sees them ----------
+  # (Secrets Manager, because CloudFormation can't create SSM SecureStrings.)
+  DbMasterSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Aurora master password; the app uses it only to create its own user
+      GenerateSecretString: {PasswordLength: 32, ExcludePunctuation: true}
+  DbAppSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Password of the database user portal_app
+      GenerateSecretString: {PasswordLength: 32, ExcludePunctuation: true}
+  JwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Signs the portal's session cookies
+      GenerateSecretString: {PasswordLength: 48, ExcludePunctuation: true}
+  OriginSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Proves to the app that a request came through API Gateway
+      GenerateSecretString: {PasswordLength: 48, ExcludePunctuation: true}
+  AdminPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: The first admin's password; read it here for the first sign-in
+      GenerateSecretString: {PasswordLength: 20, ExcludePunctuation: true}
+
+  # ---------- Database ----------
+  DbCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBClusterIdentifier: portal-db
+      Engine: aurora-postgresql
+      EngineVersion: "17.9"
+      MasterUsername: portal
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DbMasterSecret}}}"
+      VpcSecurityGroupIds: [!GetAtt DbSecurityGroup.GroupId]
+      BackupRetentionPeriod: 1
+      DeletionProtection: false
+  DbInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: portal-db-instance-1
+      DBClusterIdentifier: !Ref DbCluster
+      Engine: aurora-postgresql
+      DBInstanceClass: db.t3.medium   # Learner Lab refuses Aurora Serverless
+      PubliclyAccessible: false
+
+  # ---------- HTTPS address ----------
+  # Its address goes into the app's settings and the app's address into its routes.
+  # The app's address is written out from DomainPrefix to avoid a circular reference.
+  WakeApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: cloud-dev-portal-wake
+      ProtocolType: HTTP
+  AppIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WakeApi
+      IntegrationType: HTTP_PROXY
+      IntegrationMethod: ANY
+      IntegrationUri: !Sub http://${DomainPrefix}.${AWS::Region}.elasticbeanstalk.com/{proxy}
+      PayloadFormatVersion: "1.0"
+      RequestParameters:
+        overwrite:header.x-origin-verify: !Sub "{{resolve:secretsmanager:${OriginSecret}}}"
+  AppRootIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WakeApi
+      IntegrationType: HTTP_PROXY
+      IntegrationMethod: ANY
+      IntegrationUri: !Sub http://${DomainPrefix}.${AWS::Region}.elasticbeanstalk.com/
+      PayloadFormatVersion: "1.0"
+      RequestParameters:
+        overwrite:header.x-origin-verify: !Sub "{{resolve:secretsmanager:${OriginSecret}}}"
+  AppRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WakeApi
+      RouteKey: ANY /{proxy+}
+      Target: !Sub integrations/${AppIntegration}
+  AppRootRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WakeApi
+      RouteKey: ANY /
+      Target: !Sub integrations/${AppRootIntegration}
+
+  # ---------- The portal ----------
+  Application:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      ApplicationName: cloud-dev-portal
+  ApplicationVersion:
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+    DependsOn: Code
+    Properties:
+      ApplicationName: !Ref Application
+      SourceBundle: {S3Bucket: !Ref DocsBucket, S3Key: deploy/portal.zip}
+  Environment:
+    Type: AWS::ElasticBeanstalk::Environment
+    DependsOn: DbInstance
+    Properties:
+      EnvironmentName: cloud-dev
+      ApplicationName: !Ref Application
+      VersionLabel: !Ref ApplicationVersion
+      CNAMEPrefix: !Ref DomainPrefix
+      SolutionStackName: 64bit Amazon Linux 2023 v4.14.0 running Docker
+      OptionSettings:
+        - {Namespace: aws:elasticbeanstalk:environment, OptionName: EnvironmentType, Value: SingleInstance}
+        - {Namespace: aws:elasticbeanstalk:environment, OptionName: ServiceRole, Value: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"}
+        - {Namespace: aws:autoscaling:launchconfiguration, OptionName: IamInstanceProfile, Value: LabInstanceProfile}
+        - {Namespace: aws:autoscaling:launchconfiguration, OptionName: SecurityGroups, Value: !GetAtt AppSecurityGroup.GroupId}
+        - {Namespace: aws:autoscaling:launchconfiguration, OptionName: DisableIMDSv1, Value: "true"}
+        - {Namespace: aws:ec2:instances, OptionName: InstanceTypes, Value: t3.small}
+        # us-east-1e has no t3 instances.
+        - {Namespace: aws:autoscaling:asg, OptionName: Custom Availability Zones, Value: "us-east-1a,us-east-1b,us-east-1c"}
+        - {Namespace: aws:elasticbeanstalk:command, OptionName: Timeout, Value: "1200"}
+        - {Namespace: aws:elasticbeanstalk:managedactions, OptionName: ManagedActionsEnabled, Value: "false"}
+        - {Namespace: aws:elasticbeanstalk:healthreporting:system, OptionName: SystemType, Value: basic}
+        - {Namespace: aws:elasticbeanstalk:cloudwatch:logs, OptionName: StreamLogs, Value: "true"}
+        - {Namespace: aws:elasticbeanstalk:cloudwatch:logs, OptionName: DeleteOnTerminate, Value: "true"}
+        - {Namespace: aws:elasticbeanstalk:cloudwatch:logs, OptionName: RetentionInDays, Value: "7"}
+        # Settings. No key pair, so SSH stays closed.
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: ENVIRONMENT, Value: staging}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: AWS_REGION, Value: !Ref AWS::Region}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: DB_HOST, Value: !GetAtt DbCluster.Endpoint.Address}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: DB_NAME, Value: portal}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: DB_USER, Value: portal_app}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: DB_BOOTSTRAP_USER, Value: portal}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: DB_BOOTSTRAP_SECRET_ARN, Value: !Ref DbMasterSecret}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: DOCS_BUCKET, Value: !Ref DocsBucket}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: SEED_ADMIN_EMAIL, Value: !Ref AdminEmail}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: COOKIE_SECURE, Value: "true"}
+        - {Namespace: aws:elasticbeanstalk:application:environment, OptionName: PUBLIC_BASE_URL, Value: !GetAtt WakeApi.ApiEndpoint}
+        # Secrets: Beanstalk fetches them on the instance, so the configuration shows only their ARNs.
+        - {Namespace: aws:elasticbeanstalk:application:environmentsecrets, OptionName: DB_PASSWORD, Value: !Ref DbAppSecret}
+        - {Namespace: aws:elasticbeanstalk:application:environmentsecrets, OptionName: JWT_SECRET_KEY, Value: !Ref JwtSecret}
+        - {Namespace: aws:elasticbeanstalk:application:environmentsecrets, OptionName: ORIGIN_VERIFY_SECRET, Value: !Ref OriginSecret}
+        - {Namespace: aws:elasticbeanstalk:application:environmentsecrets, OptionName: SEED_ADMIN_PASSWORD, Value: !Ref AdminPasswordSecret}
+
+  # ---------- Active and hibernate modes ----------
+  ModeParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /cloud-dev-portal/mode
+      Type: String
+      Value: !Ref InitialMode
+  ModeFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: Code
+    Properties:
+      FunctionName: cloud-dev-portal-mode
+      Description: Switches the portal between active and hibernate, wakes it on a visit, sleeps it when idle
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      Code: {S3Bucket: !Ref DocsBucket, S3Key: deploy/portal_mode.zip}
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          DB_CLUSTER_ID: !Ref DbCluster
+          EB_ENVIRONMENT: cloud-dev
+          PARAM_PREFIX: /cloud-dev-portal
+          IDLE_MINUTES: !Ref IdleMinutes
+  TickRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: cloud-dev-portal-tick
+      ScheduleExpression: rate(15 minutes)
+      Targets:
+        - {Id: mode-function, Arn: !GetAtt ModeFunction.Arn, Input: '{"action": "tick"}'}
+  TickPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ModeFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt TickRule.Arn
+  NightlyRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: cloud-dev-portal-nightly-stop
+      ScheduleExpression: !Ref NightlyStopSchedule
+      Targets:
+        - {Id: mode-function, Arn: !GetAtt ModeFunction.Arn, Input: '{"mode": "hibernate"}'}
+  NightlyPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ModeFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt NightlyRule.Arn
+  WakeIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WakeApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ModeFunction.Arn
+      PayloadFormatVersion: "2.0"
+  LaunchRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WakeApi
+      RouteKey: ANY /launch
+      Target: !Sub integrations/${WakeIntegration}
+  WakeCallsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WakeApi
+      RouteKey: ANY /_wake/{proxy+}
+      Target: !Sub integrations/${WakeIntegration}
+  WakePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ModeFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WakeApi}/*
+  # A page load fetches ~20 files, so the portal gets room; the routes that run
+  # the function (and can start servers) are kept tight.
+  WakeStage:
+    Type: AWS::ApiGatewayV2::Stage
+    DependsOn: [LaunchRoute, WakeCallsRoute, AppRoute, AppRootRoute]
+    Properties:
+      ApiId: !Ref WakeApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 50
+        ThrottlingBurstLimit: 100
+      RouteSettings:
+        ANY /launch: {ThrottlingRateLimit: 5, ThrottlingBurstLimit: 10}
+        ANY /_wake/{proxy+}: {ThrottlingRateLimit: 5, ThrottlingBurstLimit: 10}
+
+Outputs:
+  PortalUrl:
+    Description: The portal's HTTPS address
+    Value: !GetAtt WakeApi.ApiEndpoint
+  LauncherUrl:
+    Description: The link to share; it wakes the portal first if it sleeps
+    Value: !Sub ${WakeApi.ApiEndpoint}/launch
+  AdminEmail:
+    Value: !Ref AdminEmail
+  AdminPasswordSecret:
+    Description: Open this secret in Secrets Manager and choose Retrieve secret value for the admin password
+    Value: !Ref AdminPasswordSecret
+  DocsBucketName:
+    Value: !Ref DocsBucket
