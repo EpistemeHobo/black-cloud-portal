@@ -6,6 +6,8 @@ Create every AWS resource yourself in the console, and see what each one does an
 
 Use **either** this lab **or** Lab 2, not both: they use the same names. Tag what you create as described in [Tags](lab-common.md#tags).
 
+![The services you build in this lab, numbered by step](diagrams/aws-by-hand.svg)
+
 | Part | You build | Services |
 | --- | --- | --- |
 | [1. The portal](#part-1-the-portal) | The app running on AWS | EC2 security groups, S3, Aurora, Elastic Beanstalk |

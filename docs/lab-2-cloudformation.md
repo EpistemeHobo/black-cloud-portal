@@ -10,6 +10,8 @@ A **template** is a text file describing the resources you want: [infra/full-sta
 
 Use **either** this lab **or** Lab 1, not both: they use the same names (`portal-db`, `cloud-dev`, `portal-app-sg`…), so anything left from Lab 1 makes the stack fail.
 
+![The same services as Lab 1, all in one stack, numbered in the order it builds them](diagrams/aws-cloudformation.svg)
+
 ```mermaid
 flowchart LR
     User[Browser] -->|HTTPS| API[API Gateway: the portal's address]
