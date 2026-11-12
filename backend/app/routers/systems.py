@@ -402,7 +402,7 @@ def delete_review(system_id: str, review_id: int, guard: LeakGuard = Depends(), 
 def history(system_id: str, db: Session = Depends(get_db), person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     hidden = set() if svc.can_edit(person, system) or person.is_auditor else svc.RESTRICTED_FIELDS
-    # Vault and alert events: their names are for the people who may see the vault.
+    # Box and alert events: their names are for the people who may see the boxes.
     hide_secret_events = not vault.can_list(person, system)
     show = leak_scan.redactor(person, system)
     rows = db.scalars(

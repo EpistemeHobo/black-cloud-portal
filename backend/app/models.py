@@ -179,8 +179,8 @@ class System(Base):
     tech_debts: Mapped[list["TechDebt"]] = relationship(
         back_populates="system", cascade="all, delete-orphan", order_by="TechDebt.id"
     )
-    secrets: Mapped[list["SystemSecret"]] = relationship(
-        back_populates="system", cascade="all, delete-orphan", order_by="SystemSecret.name"
+    secret_boxes: Mapped[list["SecretBox"]] = relationship(
+        back_populates="system", cascade="all, delete-orphan", order_by="SecretBox.name"
     )
     secret_alerts: Mapped[list["SecretAlert"]] = relationship(
         back_populates="system", cascade="all, delete-orphan", order_by="SecretAlert.id"
@@ -379,34 +379,60 @@ class TechDebt(Base):
     created_by: Mapped[Optional[Person]] = relationship()
 
 
-class SystemSecret(Base):
-    """One value in a system's secrets vault, encrypted (vault.py).
+class SecretBox(Base):
+    """An encrypted box of a system's secrets, such as its production .env (vault.py).
 
-    Only the system's people in enums.SECRET_ROLES can read the value. Nothing
-    about the value (not even its length) is kept in clear.
+    The browser encrypts the contents with a key the box's creator generates there
+    and keeps themself; the portal never receives it. The server holds only
+    ciphertext, a key check that tells a wrong key from a right one, and the first
+    characters of the key's SHA-256 so people can tell their keys apart.
     """
-    __tablename__ = "system_secret"
-    __table_args__ = (UniqueConstraint("system_id", "name", "environment"),)
+    __tablename__ = "secret_box"
+    __table_args__ = (UniqueConstraint("system_id", "name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Made in the browser before the box exists; every ciphertext is bound to it.
+    uid: Mapped[str] = mapped_column(String(36), unique=True)
     system_id: Mapped[str] = mapped_column(ForeignKey("system.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(100))
-    environment: Mapped[str] = mapped_column(String(20), default="All")
     description: Mapped[Optional[str]] = mapped_column(String(500))
-    ciphertext: Mapped[str] = mapped_column(Text)
+    key_id: Mapped[str] = mapped_column(String(16))
+    key_check: Mapped[str] = mapped_column(String(200))
+    key_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    current_version: Mapped[int] = mapped_column(Integer, default=1)
     created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    # When the value itself last changed: a secret nobody has rotated in a year shows it.
-    rotated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_revealed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    last_revealed_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
+    # Reported by the browser after it opened the box with the right key.
+    last_opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_opened_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
 
-    system: Mapped[System] = relationship(back_populates="secrets")
+    system: Mapped[System] = relationship(back_populates="secret_boxes")
+    versions: Mapped[list["SecretBoxVersion"]] = relationship(
+        back_populates="box", cascade="all, delete-orphan", order_by="SecretBoxVersion.version"
+    )
     created_by: Mapped[Optional[Person]] = relationship(foreign_keys=[created_by_id])
-    updated_by: Mapped[Optional[Person]] = relationship(foreign_keys=[updated_by_id])
-    last_revealed_by: Mapped[Optional[Person]] = relationship(foreign_keys=[last_revealed_by_id])
+    last_opened_by: Mapped[Optional[Person]] = relationship(foreign_keys=[last_opened_by_id])
+
+
+class SecretBoxVersion(Base):
+    """One saved state of a box's contents. Saving makes a new version; old ones stay."""
+    __tablename__ = "secret_box_version"
+    __table_args__ = (UniqueConstraint("box_id", "version"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    box_id: Mapped[int] = mapped_column(ForeignKey("secret_box.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    # Base64 of the 12-byte IV followed by the AES-256-GCM ciphertext and tag. Loaded
+    # only when asked for, so listing versions doesn't pull every ciphertext.
+    ciphertext: Mapped[str] = mapped_column(Text, deferred=True)
+    # In clear, like a commit message: what changed, never a value.
+    note: Mapped[Optional[str]] = mapped_column(String(300))
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    box: Mapped[SecretBox] = relationship(back_populates="versions")
+    created_by: Mapped[Optional[Person]] = relationship()
 
 
 class SecretAlert(Base):

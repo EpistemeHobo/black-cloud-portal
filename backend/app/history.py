@@ -167,7 +167,7 @@ def _record_changes(session: Session, _flush_context, _instances) -> None:
 
 
 def log_secret_event(session: Session, system_id: str, name: str, action: str, detail: Optional[str] = None) -> None:
-    """A vault or leak alert event in the system's history. Never the value: only its name.
+    """A secret box or leak alert event in the system's history. Never a value: only a name.
 
     The history page shows these to the system's people and admins only (routers/systems.py).
     """

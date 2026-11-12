@@ -1,15 +1,18 @@
-"""The secrets vault, push protection, leak alerts, masking and the scheduled scan.
+"""Secret boxes, push protection, leak alerts, masking and the scheduled scan.
 
 Fake secrets are put together at run time, so this file itself holds nothing that
 looks like a real one to a scanner (ours, GitLab's or GitHub's).
 """
+import base64
+import os
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
 from app import leak_scan
 from app.db import SessionLocal
-from app.models import ChangeLog, Person, SecretAlert, SecretScanRun, System, SystemSecret
+from app.models import ChangeLog, Person, SecretAlert, SecretBox, SecretBoxVersion, SecretScanRun, System
 
 from conftest import OUTBOX, login
 
@@ -158,55 +161,119 @@ def test_masked_text_cannot_be_saved_over_the_real_one(owner, system):
     assert GITHUB in owner.get(url).json()["fields"]["integrations_apis"]
 
 
-# ---------- The vault ----------
+# ---------- Secret boxes ----------
+# The browser encrypts; here, random bytes stand in for its ciphertext.
 
-def test_vault_only_for_the_systems_people(owner, other, admin, system):
-    url = f"/api/systems/{_id(system)}/secrets"
-    r = owner.post(url, json={"name": "DB_PASSWORD", "environment": "Prod", "value": "s3cr3t-Value-1"})
+def _cipher(n: int = 64) -> str:
+    return base64.b64encode(os.urandom(n)).decode()
+
+
+def _box(name: str = "prod .env", **extra) -> dict:
+    return {"uid": str(uuid.uuid4()), "name": name, "description": "Production settings",
+            "key_id": "a1b2c3d4", "key_check": _cipher(48), "ciphertext": _cipher(), "note": "first copy", **extra}
+
+
+def _people(*emails: str) -> dict[str, int]:
+    with SessionLocal() as db:
+        return {e: db.scalar(select(Person.id).where(Person.email == e)) for e in emails}
+
+
+def test_boxes_only_for_the_systems_people(owner, other, admin, system):
+    url = f"/api/systems/{_id(system)}/boxes"
+    body = _box()
+    r = owner.post(url, json=body)
     assert r.status_code == 201, r.text
-    item = r.json()["items"][0]
-    assert item["name"] == "DB_PASSWORD" and "value" not in item
+    box = r.json()["items"][0]
+    assert box["name"] == "prod .env" and box["current_version"] == 1 and box["key_id"] == "a1b2c3d4"
     assert r.json()["access"][0]["email"] == "owner@example.org"
 
-    with SessionLocal() as db:
-        row = db.scalar(select(SystemSecret))
-        assert "s3cr3t-Value-1" not in row.ciphertext
-
-    assert owner.post(f"{url}/{item['id']}/reveal").json() == {"value": "s3cr3t-Value-1"}
+    got = owner.get(f"{url}/{box['id']}/versions/1").json()
+    assert got["ciphertext"] == body["ciphertext"] and got["note"] == "first copy"
     assert other.get(url).status_code == 403
-    assert other.post(f"{url}/{item['id']}/reveal").status_code == 403
-    # Admins oversee the names, not the values.
-    assert admin.get(url).json()["items"][0]["name"] == "DB_PASSWORD"
-    assert admin.post(f"{url}/{item['id']}/reveal").status_code == 403
+    assert other.get(f"{url}/{box['id']}/versions/1").status_code == 403
+    # Admins oversee names and history, never the ciphertext.
+    assert admin.get(url).json()["items"][0]["name"] == "prod .env"
+    assert admin.get(f"{url}/{box['id']}/versions").json()[0]["version"] == 1
+    assert admin.get(f"{url}/{box['id']}/versions/1").status_code == 403
+    assert admin.get(f"{url}/{box['id']}/ciphertexts").status_code == 403
+    assert admin.post(f"{url}/{box['id']}/versions", json={"expected_version": 1, "ciphertext": _cipher()}).status_code == 403
 
-    # Every reveal is in the history, which only the system's people and admins read in full.
+    owner.post(f"{url}/{box['id']}/opened")
+    assert owner.get(url).json()["items"][0]["last_opened_by"] == "Owner"
     rows = owner.get(f"/api/systems/{_id(system)}/history").json()
-    assert any(r["entity"] == "secret" and r["field"] == "revealed" and r["entity_id"] == "DB_PASSWORD" for r in rows)
+    assert {r["field"] for r in rows if r["entity"] == "secret"} >= {"box_created", "box_opened"}
     hidden = [r for r in other.get(f"/api/systems/{_id(system)}/history").json() if r["entity"] == "secret"]
     assert hidden and all(r["hidden"] and r["entity_id"] == "" for r in hidden)
 
 
-def test_vault_rotate_rename_and_delete(owner, system):
-    url = f"/api/systems/{_id(system)}/secrets"
-    sid = owner.post(url, json={"name": "API_KEY", "value": "first-value-123"}).json()["items"][0]["id"]
-    assert owner.post(url, json={"name": "API_KEY", "value": "x" * 10}).status_code == 409
-    r = owner.put(f"{url}/{sid}", json={"name": "PARTNER_API_KEY", "environment": "Staging", "value": "second-value-456"})
-    assert r.json()["items"][0]["name"] == "PARTNER_API_KEY"
-    assert owner.post(f"{url}/{sid}/reveal").json()["value"] == "second-value-456"
-    assert owner.delete(f"{url}/{sid}").json()["items"] == []
+def test_box_refuses_plain_text(owner, system):
+    url = f"/api/systems/{_id(system)}/boxes"
+    assert owner.post(url, json=_box(ciphertext="DB_PASSWORD=hunter2 and more plain text here")).status_code == 422
+    assert owner.post(url, json=_box(ciphertext=base64.b64encode(b"x" * 20).decode() + "=" * 20)).status_code == 422
+    assert owner.post(url, json=_box(uid="not-a-uuid")).status_code == 422
 
 
-def test_vault_value_pasted_in_plain_text_is_caught(owner, system):
-    owner.post(f"/api/systems/{_id(system)}/secrets", json={"name": "SMTP", "value": "plain-Mail-Pass-77"})
-    r = owner.patch(f"/api/systems/{_id(system)}", json={"run_steps": "login with plain-Mail-Pass-77"})
-    assert r.status_code == 422 and r.json()["detail"]["findings"][0]["rule"] == "vault_value"
+def test_versions_and_concurrent_saves(owner, system):
+    url = f"/api/systems/{_id(system)}/boxes"
+    box_id = owner.post(url, json=_box()).json()["items"][0]["id"]
+    assert owner.post(f"{url}/{box_id}/versions", json={"expected_version": 1, "ciphertext": _cipher(),
+                                                         "note": "new SMTP key"}).status_code == 201
+    # Someone else's save in between: refused, not overwritten.
+    r = owner.post(f"{url}/{box_id}/versions", json={"expected_version": 1, "ciphertext": _cipher()})
+    assert r.status_code == 409
+    versions = owner.get(f"{url}/{box_id}/versions").json()
+    assert [(v["version"], v["note"]) for v in versions] == [(2, "new SMTP key"), (1, "first copy")]
+    assert "ciphertext" not in versions[0]
+    assert owner.post(url, json=_box()).status_code == 409  # same name
 
 
-def test_vault_value_already_in_text_gets_an_alert(owner, system):
-    owner.patch(f"/api/systems/{_id(system)}", json={"if_down": "Use the backup login: opensesame-42x"})
-    owner.post(f"/api/systems/{_id(system)}/secrets", json={"name": "BACKUP_LOGIN", "value": "opensesame-42x"})
-    alerts = owner.get(f"/api/systems/{_id(system)}/secret-alerts").json()
-    assert [a["rule"] for a in alerts] == ["vault_value"]
+def test_change_key_replaces_every_version(owner, system):
+    url = f"/api/systems/{_id(system)}/boxes"
+    box_id = owner.post(url, json=_box()).json()["items"][0]["id"]
+    owner.post(f"{url}/{box_id}/versions", json={"expected_version": 1, "ciphertext": _cipher()})
+    new = {1: _cipher(), 2: _cipher()}
+    partial = {"expected_version": 2, "key_id": "ffee0011", "key_check": _cipher(48),
+               "versions": [{"version": 1, "ciphertext": new[1]}]}
+    assert owner.put(f"{url}/{box_id}/key", json=partial).status_code == 422
+    full = {**partial, "versions": [{"version": v, "ciphertext": c} for v, c in new.items()]}
+    r = owner.put(f"{url}/{box_id}/key", json=full)
+    assert r.status_code == 200 and r.json()["items"][0]["key_id"] == "ffee0011"
+    assert owner.get(f"{url}/{box_id}/versions/2").json()["ciphertext"] == new[2]
+
+
+def test_someone_leaving_asks_for_a_new_key(owner, system):
+    login("dev@example.org", "Dev")
+    ids = _people("owner@example.org", "dev@example.org")
+    roles = f"/api/systems/{_id(system)}/roles"
+    owner.put(roles, json=[{"person_id": ids["owner@example.org"], "role": "technical_owner"},
+                           {"person_id": ids["dev@example.org"], "role": "developer"}])
+    url = f"/api/systems/{_id(system)}/boxes"
+    box_id = owner.post(url, json=_box()).json()["items"][0]["id"]
+    owner.put(roles, json=[{"person_id": ids["owner@example.org"], "role": "technical_owner"}])
+    assert owner.get(url).json()["items"][0]["left_since_key_change"] == ["Dev"]
+    owner.put(f"{url}/{box_id}/key", json={"expected_version": 1, "key_id": "0badc0de", "key_check": _cipher(48),
+                                           "versions": [{"version": 1, "ciphertext": _cipher()}]})
+    assert owner.get(url).json()["items"][0]["left_since_key_change"] == []
+
+
+def test_delete_box_removes_every_version(owner, system):
+    url = f"/api/systems/{_id(system)}/boxes"
+    box_id = owner.post(url, json=_box()).json()["items"][0]["id"]
+    owner.post(f"{url}/{box_id}/versions", json={"expected_version": 1, "ciphertext": _cipher()})
+    assert owner.delete(f"{url}/{box_id}").json()["items"] == []
+    with SessionLocal() as db:
+        assert db.scalar(select(SecretBoxVersion)) is None and db.scalar(select(SecretBox)) is None
+
+
+def test_box_key_pasted_in_plain_text_is_caught(owner, system):
+    key = "pvk1" + "_" + "Qm9vay1rZXktZm9yLXRlc3Rpbmctb25seS0xMjM0NTY"
+    r = owner.patch(f"/api/systems/{_id(system)}", json={"run_steps": f"open the box with {key}"})
+    assert r.status_code == 422 and r.json()["detail"]["findings"][0]["rule"] == "portal_box_key"
+
+
+def test_secret_in_a_box_note_is_caught(owner, system):
+    r = owner.post(f"/api/systems/{_id(system)}/boxes", json=_box(note=f"rotated to {GITHUB}"))
+    assert r.status_code == 422 and r.json()["detail"]["findings"][0]["location"].startswith("กล่องรหัสลับ")
 
 
 # ---------- The scheduled scan ----------

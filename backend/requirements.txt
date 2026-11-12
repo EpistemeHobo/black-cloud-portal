@@ -4,8 +4,6 @@ sqlalchemy>=2.0,<3
 alembic
 # [crypto] adds the RS256 verifier that Cognito's ID tokens need.
 pyjwt[crypto]
-# The secrets vault encrypts values with Fernet (vault.py).
-cryptography
 httpx
 python-dotenv
 # Aurora PostgreSQL (DB_HOST / DATABASE_URL) and S3 for the guide's markdown files.

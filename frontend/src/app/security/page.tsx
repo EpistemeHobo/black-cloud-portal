@@ -17,7 +17,7 @@ type ScanRun = {
   id: number; trigger: string; started_at: string; finished_at: string | null; systems_scanned: number;
   texts_scanned: number; findings: number; new_alerts: number; error: string | null; started_by: string | null;
 };
-type Scans = { interval_hours: number; vault_enabled: boolean; runs: ScanRun[] };
+type Scans = { interval_hours: number; runs: ScanRun[] };
 
 const TRIGGERS: Record<string, string> = { scheduled: "ตามรอบ", manual: "ผู้ดูแลสั่ง", cli: "คำสั่ง (cron)" };
 
@@ -52,7 +52,6 @@ function ScanRuns() {
           {scans.interval_hours > 0
             ? `พอร์ทัลตรวจทุกระบบ รวมทั้งไฟล์แนบ ทุก ${scans.interval_hours} ชั่วโมง`
             : "ปิดการตรวจตามรอบในแอปไว้ (SECRET_SCAN_INTERVAL_HOURS=0) ให้ตั้ง cron เรียก python -m app.leak_scan แทน"}
-          {!scans.vault_enabled && " · ตู้เซฟรหัสลับยังไม่เปิดใช้: ตั้งค่า SECRETS_ENCRYPTION_KEY"}
         </p>
       )}
       <DataTable value={scans?.runs ?? []} loading={scans === null} size="small" stripedRows paginator rows={10}

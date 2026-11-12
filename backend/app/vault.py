@@ -1,138 +1,84 @@
-"""The secrets vault: encrypting the values a system's people keep in the portal.
+"""Secret boxes: who may hold a system's encrypted secrets, and checks on what is stored.
 
-Each value is encrypted with Fernet (AES-128-CBC plus an HMAC-SHA256, from the
-`cryptography` package) under a key derived from SECRETS_ENCRYPTION_KEY. The
-database only ever holds the ciphertext, so a database dump or backup on its own
-doesn't give the secrets away; the key lives elsewhere (SSM or Secrets Manager on
-AWS, the Kubernetes secret on-premises).
+Each system can have several boxes (one per environment, say), and each box keeps
+every version it was saved as. The browser does all the cryptography
+(frontend/src/lib/boxCrypto.ts):
 
-Who may read a value is decided by can_use() below: only the system's people in
-enums.SECRET_ROLES. Admins see the list of names, not the values
+- When a box is made, the browser generates a random 256-bit key (`pvk1_…`) and
+  shows it once. Its creator keeps it (a password manager, next to their .env)
+  and passes it to whoever takes over. The portal never receives it.
+- Contents are encrypted with AES-256-GCM under that key, bound to the box and the
+  version number, and only the ciphertext is uploaded.
+- A key check (a known text encrypted the same way) lets the browser tell a wrong
+  key from a damaged box, and a short key id lets people tell keys apart.
+
+So a database dump, a backup or an admin can't read a box, and a lost key can't be
+recovered: the portal is a second copy, never the only place a secret lives
 (docs/decisions/0009-secrets.md).
 
-Rotating the key: put the new key first in SECRETS_ENCRYPTION_KEY (comma-separated,
-old one after it), restart, run `python -m app.vault rotate`, then remove the old key.
+The server still limits who may download ciphertext to the system's people:
+encryption is the lock, this is the door.
 """
 import base64
-import hashlib
-import hmac
-import logging
-import secrets as _secrets
-from functools import lru_cache
+import binascii
+import re
 from typing import Optional
 
-from cryptography.fernet import Fernet, InvalidToken, MultiFernet
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from app import config
 from app.enums import SECRET_ROLES
-from app.models import Person, System
+from app.models import ChangeLog, Person, SecretBox, System
 
-logger = logging.getLogger("portal")
-
-KEY_FILE = config.INSTANCE_DIR / "vault.key"
-
-
-class VaultUnavailable(Exception):
-    """No encryption key is set up, so the vault is switched off."""
-
-
-def _derive(key: str, purpose: bytes) -> bytes:
-    # Any 32+ character string works as the setting (Secrets Manager makes one);
-    # Fernet wants 32 bytes in url-safe base64. A different purpose gives an
-    # unrelated key, so the fingerprint key never equals the encryption key.
-    return base64.urlsafe_b64encode(hmac.new(key.encode("utf-8"), purpose, hashlib.sha256).digest())
-
-
-@lru_cache(maxsize=1)
-def _keys() -> tuple[str, ...]:
-    if config.SECRETS_ENCRYPTION_KEYS:
-        return tuple(config.SECRETS_ENCRYPTION_KEYS)
-    if not config.DATABASE_URL.startswith("sqlite"):
-        # A key made up on this instance would be lost with it, and every stored
-        # value with it. Better no vault than an unreadable one.
-        return ()
-    # A developer's machine: a key file beside the SQLite database, made once.
-    if not KEY_FILE.exists():
-        KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        KEY_FILE.write_text(_secrets.token_urlsafe(48), encoding="utf-8")
-        logger.info("Made a new vault key at %s", KEY_FILE)
-    return (KEY_FILE.read_text(encoding="utf-8").strip(),)
-
-
-def configured() -> bool:
-    return bool(_keys())
-
-
-@lru_cache(maxsize=1)
-def _fernet() -> MultiFernet:
-    keys = _keys()
-    if not keys:
-        raise VaultUnavailable()
-    return MultiFernet([Fernet(_derive(k, b"portal-vault-v1")) for k in keys])
-
-
-def encrypt(value: str) -> str:
-    return _fernet().encrypt(value.encode("utf-8")).decode("ascii")
-
-
-def decrypt(ciphertext: str) -> str:
-    try:
-        return _fernet().decrypt(ciphertext.encode("ascii")).decode("utf-8")
-    except InvalidToken:
-        # Wrong or missing key: say so in the log, never show the ciphertext.
-        logger.error("A vault value could not be decrypted: is the key in SECRETS_ENCRYPTION_KEY?")
-        raise
-
-
-def try_decrypt(ciphertext: str) -> Optional[str]:
-    try:
-        return decrypt(ciphertext)
-    except (InvalidToken, VaultUnavailable):
-        return None
-
-
-def fingerprint_key() -> bytes:
-    """Keys the leak scanner's fingerprints, so a stored fingerprint of a short
-    password can't be brute-forced from the database alone. The last (oldest)
-    key, so rotating the encryption key doesn't change every fingerprint."""
-    keys = _keys()
-    if not keys:
-        return b"portal-leak-fingerprint"
-    return _derive(keys[-1], b"portal-leak-fingerprint-v1")
+# IV (12 bytes) + GCM tag (16 bytes): nothing shorter can be a real ciphertext.
+MIN_CIPHERTEXT_BYTES = 28
+UID_PATTERN = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+KEY_ID_PATTERN = re.compile(r"[0-9a-f]{8,16}")
 
 
 def can_use(person: Person, system: System) -> bool:
-    """May read and change the system's vault values and see its leak alerts' details."""
+    """May download the boxes' ciphertext, add versions and see the leak alerts' details."""
     return any(r.person_id == person.id and r.role in SECRET_ROLES for r in system.roles)
 
 
 def can_list(person: Person, system: System) -> bool:
-    """May see the vault's names and the leak alerts: the people above, and admins."""
+    """May see the boxes' names and history and the leak alerts: the people above, and admins."""
     return person.is_admin or can_use(person, system)
 
 
-def rotate_all(db) -> int:
-    """Re-encrypt every value under the first key. Returns how many."""
-    from sqlalchemy import select
-
-    from app.models import SystemSecret
-
-    count = 0
-    for row in db.scalars(select(SystemSecret)):
-        row.ciphertext = _fernet().rotate(row.ciphertext.encode("ascii")).decode("ascii")
-        count += 1
-    db.commit()
-    return count
+def check_ciphertext(value: str, label: str = "ข้อมูลที่เข้ารหัส") -> str:
+    """Refuse anything that isn't base64 of at least an IV and a tag: plain text sent by mistake."""
+    try:
+        raw = base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=422, detail=f"{label} ไม่ใช่ข้อมูลที่เข้ารหัสแล้ว")
+    if len(raw) < MIN_CIPHERTEXT_BYTES:
+        raise HTTPException(status_code=422, detail=f"{label} สั้นเกินกว่าจะเป็นข้อมูลที่เข้ารหัส")
+    return value
 
 
-if __name__ == "__main__":
-    import sys
+def left_since_key_change(db: Session, system: System, box: SecretBox) -> list[str]:
+    """People taken off the system (from a role that could open boxes) since the box's key changed.
 
-    from app.db import SessionLocal
+    They may still have the old key, so the box's key should be changed and the
+    new one given to the people who stay.
+    """
+    rows = db.scalars(
+        select(ChangeLog).where(ChangeLog.system_id == system.id, ChangeLog.entity == "role",
+                                ChangeLog.field == "removed", ChangeLog.changed_at > box.key_changed_at)
+    ).all()
+    current = {f"{r.role}: {r.person.name}" for r in system.roles}
+    names: list[str] = []
+    for row in rows:
+        role, _, name = (row.old_value or "").partition(": ")
+        if role in SECRET_ROLES and row.old_value not in current and name not in names:
+            names.append(name)
+    return names
 
-    if sys.argv[1:] != ["rotate"]:
-        raise SystemExit("Usage: python -m app.vault rotate")
-    if not configured():
-        raise SystemExit("Set SECRETS_ENCRYPTION_KEY first.")
-    with SessionLocal() as session:
-        print(f"Re-encrypted {rotate_all(session)} secrets with the first key.")
+
+def find_box(system: System, box_id: int) -> SecretBox:
+    box: Optional[SecretBox] = next((b for b in system.secret_boxes if b.id == box_id), None)
+    if box is None:
+        raise HTTPException(status_code=404, detail="ไม่พบกล่องรหัสลับนี้")
+    return box

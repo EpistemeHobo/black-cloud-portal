@@ -16,7 +16,7 @@ from app.auth import current_person
 from app.db import get_db
 from app.enums import DEBT_CLOSED
 from app.leak_guard import LeakGuard
-from app.models import Person, System, SystemRole, TechDebt, utcnow
+from app.models import Person, SecretBox, System, SystemRole, TechDebt, utcnow
 from app.schemas import TechDebtIn
 
 router = APIRouter(prefix="/api", tags=["tech debt"])
@@ -129,7 +129,8 @@ def all_debt(db: Session = Depends(get_db), person: Person = Depends(current_per
     systems = db.scalars(select(System).options(
         selectinload(System.tech_debts).selectinload(TechDebt.created_by),
         selectinload(System.roles).selectinload(SystemRole.person),
-        selectinload(System.secret_alerts), selectinload(System.secrets),
+        selectinload(System.secret_alerts),
+        selectinload(System.secret_boxes).selectinload(SecretBox.versions),
     )).all()
     items = []
     for system in systems:

@@ -15,7 +15,8 @@ from app.enums import (
 from app.fields import FIELDS, GUIDE_FIELDS, RESTRICTED_FIELDS
 from app.guide import answered_count, guide_status
 from app.models import (
-    ChangeLog, ChecklistItem, Dependency, GuideDoc, OpenItem, Person, StandardsVersion, System, SystemRole, Unit,
+    ChangeLog, ChecklistItem, Dependency, GuideDoc, OpenItem, Person, SecretBox, StandardsVersion, System, SystemRole,
+    Unit,
 )
 
 _LOAD = (
@@ -28,7 +29,7 @@ _LOAD = (
     selectinload(System.open_items).selectinload(OpenItem.done_by),
     selectinload(System.docs).selectinload(GuideDoc.updated_by),
     selectinload(System.tech_debts),
-    selectinload(System.secrets),
+    selectinload(System.secret_boxes).selectinload(SecretBox.versions),
     selectinload(System.secret_alerts),
 )
 
@@ -136,7 +137,7 @@ def summary(db: Session, system: System, items: list[ChecklistItem]) -> dict:
 
 
 def security_summary(viewer: Person, system: System) -> dict:
-    """What the system page shows about its vault and leak alerts, to whoever may see them."""
+    """What the system page shows about its secret boxes and leak alerts, to whoever may see them."""
     from app import vault
     from app.enums import ALERT_SEVERITIES
 
@@ -144,8 +145,8 @@ def security_summary(viewer: Person, system: System) -> dict:
         return {"can_list": False, "can_use": False}
     open_alerts = [a for a in system.secret_alerts if a.status == "open"]
     worst = min((a.severity for a in open_alerts), key=lambda s: list(ALERT_SEVERITIES).index(s), default=None)
-    return {"can_list": True, "can_use": vault.can_use(viewer, system), "vault_enabled": vault.configured(),
-            "secrets": len(system.secrets), "open_alerts": len(open_alerts), "worst_severity": worst}
+    return {"can_list": True, "can_use": vault.can_use(viewer, system),
+            "boxes": len(system.secret_boxes), "open_alerts": len(open_alerts), "worst_severity": worst}
 
 
 def detail(db: Session, system: System, viewer: Person) -> dict:

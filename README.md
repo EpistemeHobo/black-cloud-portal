@@ -56,12 +56,13 @@ The container applies new migrations when it starts.
 
 ## Secrets and leak scanning
 
-Each system has a secrets vault and leak alerts in its **รหัสลับและความปลอดภัย** tab, and the **ความปลอดภัย** page lists alerts across systems (decision [0009](docs/decisions/0009-secrets.md)).
+Each system has secret boxes and leak alerts in its **รหัสลับและความปลอดภัย** tab, and the **ความปลอดภัย** page lists alerts across systems (decision [0009](docs/decisions/0009-secrets.md)).
+
+A box is encrypted in the browser with a key its creator generates there and keeps; the portal never receives it, so nobody can recover a lost one. The portal is a second copy: owners keep the originals elsewhere (a `.env` kept out of Git, a password manager). Boxes need the portal opened over HTTPS, or on `localhost`.
 
 ```bash
 cd backend
 python -m app.leak_scan     # scan every system now, as the schedule does (for a cron job)
-python -m app.vault rotate  # after putting a new key first in SECRETS_ENCRYPTION_KEY
 ```
 
 To keep a documented example value from being reported, put `portal:ignore-secret` on the same line.
@@ -80,7 +81,6 @@ All settings are listed in `.env.example`.
 | --- | --- | --- |
 | `ENVIRONMENT` | `production` turns on safe defaults and requires the email settings | `production` |
 | `JWT_SECRET_KEY` | Signs session cookies; required in production | in the Kubernetes secret |
-| `SECRETS_ENCRYPTION_KEY` | Encrypts each system's secrets vault; required in production. Back it up: without it the vault can't be read. Comma-separated to rotate | in the Kubernetes secret |
 | `SECRET_SCAN_INTERVAL_HOURS` | How often every system is scanned for leaked secrets; `0` turns the in-app schedule off | `24` |
 | `DATABASE_URL` | Database address; SQLite by default | `sqlite:////app/instance/portal.db` |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Aurora PostgreSQL in parts, used when `DATABASE_URL` is empty | `portal.cluster-….us-east-1.rds.amazonaws.com` |

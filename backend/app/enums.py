@@ -32,7 +32,7 @@ ROLES = {
 }
 # Roles whose holders may edit the system.
 EDITOR_ROLES = {"business_owner", "technical_owner", "backup_owner", "developer"}
-# Roles whose holders may open the system's secrets vault and see its leak alerts:
+# Roles whose holders may download the system's secret boxes and see its leak alerts:
 # the people who build it and the backup owner who takes it over. Not admins,
 # auditors, support contacts or previous owners (docs/decisions/0009-secrets.md).
 SECRET_ROLES = {"business_owner", "technical_owner", "backup_owner", "developer"}
@@ -100,13 +100,10 @@ DEBT_STATUSES = {
 }
 DEBT_CLOSED = {"paid_off", "wont_fix"}
 
-# The secrets vault: which environment a secret is for.
-SECRET_ENVIRONMENTS = ["All", "Dev", "Staging", "Prod"]
-
 # How an owner closes a leak alert (like GitHub's secret scanning).
 ALERT_RESOLUTIONS = {
     "revoked": "เปลี่ยนหรือยกเลิกรหัสนั้นแล้ว",
-    "moved_to_vault": "ย้ายไปเก็บในตู้เซฟและลบออกจากข้อความแล้ว",
+    "moved_to_vault": "ย้ายไปเก็บในกล่องรหัสลับและลบออกจากข้อความแล้ว",
     "false_positive": "ไม่ใช่รหัสลับ (ตรวจผิด)",
     "used_in_tests": "เป็นค่าทดสอบ ไม่ใช่รหัสจริง",
     "wont_fix": "ยอมรับความเสี่ยง",
@@ -140,8 +137,6 @@ CHOICE_LABELS = {
     # Checklist levels
     "required": "จำเป็น",
     "recommended": "แนะนำ",
-    # Vault environments
-    "All": "ทุกสภาพแวดล้อม",
     # Field choices (fields.py)
     "Unknown": "ไม่ทราบ",
     "In-house": "พัฒนาเอง",

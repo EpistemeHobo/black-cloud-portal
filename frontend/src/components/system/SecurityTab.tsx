@@ -1,213 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "primereact/button";
 import { Dialog } from "primereact/dialog";
 import { Dropdown } from "primereact/dropdown";
 import { InputText } from "primereact/inputtext";
-import { InputTextarea } from "primereact/inputtextarea";
 import { SelectButton } from "primereact/selectbutton";
 import { Tag } from "primereact/tag";
 import { Card, Empty, SeverityTag } from "@/components/bits";
-import { api, formatDate, formatDateTime } from "@/lib/api";
-import { choiceOptions } from "@/lib/labels";
+import { api, formatDateTime } from "@/lib/api";
 import { useSession } from "@/lib/session";
-import type { SecretAlert, SystemDetail, Vault, VaultSecret } from "@/lib/types";
-
-// A value nobody has changed in a year is worth rotating.
-const ROTATE_AFTER_DAYS = 365;
-// How long a revealed value stays on screen.
-const REVEAL_SECONDS = 30;
-
-type SecretDraft = { name: string; environment: string; description: string; value: string };
-
-function age(iso: string | null): number {
-  return iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000) : 0;
-}
-
-/** One vault entry, with its value shown for a short while when asked. */
-function SecretRow({ s, canUse, base, onEdit, onDelete, onRevealed }: {
-  s: VaultSecret; canUse: boolean; base: string; onEdit: () => void; onDelete: () => void; onRevealed: () => void;
-}) {
-  const { label, notify } = useSession();
-  const [value, setValue] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-
-  async function reveal() {
-    try {
-      const r = await api<{ value: string }>(`${base}/${s.id}/reveal`, { method: "POST" });
-      setValue(r.value);
-      onRevealed();
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setValue(null), REVEAL_SECONDS * 1000);
-    } catch (e) {
-      notify("error", "เปิดดูค่าไม่สำเร็จ", (e as Error).message);
-    }
-  }
-
-  async function copy() {
-    if (value === null) return;
-    await navigator.clipboard.writeText(value);
-    notify("success", "คัดลอกแล้ว", "อย่าวางค่านี้ในแชท เอกสาร หรือหน้าอื่นของพอร์ทัล");
-  }
-
-  const stale = age(s.rotated_at) > ROTATE_AFTER_DAYS;
-  return (
-    <li className="rounded-lg border border-slate-200 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <i className="pi pi-key text-slate-400" aria-hidden />
-        <span className="font-mono text-sm font-semibold text-slate-900">{s.name}</span>
-        <Tag value={label(s.environment)} severity={s.environment === "Prod" ? "danger" : "info"} />
-        {stale && <Tag value={`ไม่ได้เปลี่ยนค่ามา ${age(s.rotated_at)} วัน`} severity="warning" icon="pi pi-refresh" />}
-        {canUse && (
-          <span className="ml-auto flex gap-1">
-            <Button label={value === null ? "ดูค่า" : "ซ่อน"} icon={value === null ? "pi pi-eye" : "pi pi-eye-slash"} size="small" text
-              onClick={value === null ? reveal : () => setValue(null)} />
-            <Button icon="pi pi-pencil" text rounded size="small" severity="secondary" aria-label="แก้ไขหรือเปลี่ยนค่า" onClick={onEdit} />
-            <Button icon="pi pi-trash" text rounded size="small" severity="secondary" aria-label="ลบ" onClick={onDelete} />
-          </span>
-        )}
-      </div>
-      {s.description && <p className="mt-1 text-sm text-slate-600">{s.description}</p>}
-      {value !== null && (
-        <div className="mt-2 flex items-start gap-2 rounded-md bg-slate-900 p-2">
-          <pre className="max-h-48 flex-1 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-emerald-200">{value}</pre>
-          <Button icon="pi pi-copy" text rounded size="small" className="!text-slate-200" aria-label="คัดลอก" onClick={copy} />
-        </div>
-      )}
-      <p className="mt-1 text-xs text-slate-500">
-        เปลี่ยนค่าล่าสุด {formatDate(s.rotated_at)}
-        {s.updated_by && <> โดย {s.updated_by}</>}
-        {s.last_revealed_at ? <> · เปิดดูล่าสุด {formatDateTime(s.last_revealed_at)} โดย {s.last_revealed_by}</> : <> · ยังไม่มีใครเปิดดู</>}
-      </p>
-    </li>
-  );
-}
-
-function VaultCard({ system }: { system: SystemDetail }) {
-  const { meta, label, notify } = useSession();
-  const [vault, setVault] = useState<Vault | null>(null);
-  const [editing, setEditing] = useState<{ id: number | null; draft: SecretDraft } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const base = `/api/systems/${encodeURIComponent(system.id)}/secrets`;
-
-  const load = useCallback(() => {
-    api<Vault>(base).then(setVault).catch((e) => notify("error", "โหลดตู้เซฟรหัสลับไม่สำเร็จ", e.message));
-  }, [base, notify]);
-  useEffect(load, [load]);
-
-  async function save() {
-    if (!editing) return;
-    setBusy(true);
-    try {
-      const { draft, id } = editing;
-      const body = { ...draft, value: draft.value || undefined };
-      setVault(await api<Vault>(id ? `${base}/${id}` : base, { method: id ? "PUT" : "POST", body }));
-      setEditing(null);
-      notify("success", id && draft.value ? "เปลี่ยนค่าแล้ว" : "บันทึกแล้ว",
-        "ถ้าค่านี้เคยอยู่ในข้อความหรือไฟล์ของระบบ พอร์ทัลจะแจ้งเตือนในหัวข้อด้านล่าง");
-    } catch (e) {
-      notify("error", "บันทึกไม่สำเร็จ", (e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove(s: VaultSecret) {
-    if (!window.confirm(`ลบ ${s.name} ออกจากตู้เซฟหรือไม่? ลบแล้วกู้คืนไม่ได้`)) return;
-    try {
-      setVault(await api<Vault>(`${base}/${s.id}`, { method: "DELETE" }));
-    } catch (e) {
-      notify("error", "ลบไม่สำเร็จ", (e as Error).message);
-    }
-  }
-
-  const canUse = vault?.can_use ?? false;
-  const draft = editing?.draft;
-  const setDraft = (d: Partial<SecretDraft>) => editing && setEditing({ ...editing, draft: { ...editing.draft, ...d } });
-
-  return (
-    <Card
-      title={<><i className="pi pi-lock text-slate-500" aria-hidden />ตู้เซฟรหัสลับ</>}
-      actions={canUse && vault?.enabled && (
-        <Button label="เก็บรหัสลับ" icon="pi pi-plus" size="small" outlined
-          onClick={() => setEditing({ id: null, draft: { name: "", environment: "All", description: "", value: "" } })} />
-      )}
-    >
-      <p className="-mt-1 mb-3 text-sm text-slate-600">
-        เก็บรหัสผ่าน คีย์ API และค่าตั้งค่าลับของระบบไว้ที่นี่ แทนการเขียนลงในคู่มือหรือไฟล์แนบ
-        ค่าถูกเข้ารหัสก่อนบันทึก และเปิดดูได้เฉพาะคนในทีมของระบบตามรายชื่อด้านล่าง ทุกครั้งที่เปิดดูจะถูกบันทึกในประวัติการแก้ไข
-      </p>
-      {vault === null ? <Empty>กำลังโหลด…</Empty> : !vault.enabled ? (
-        <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
-          ตู้เซฟยังไม่เปิดใช้: ผู้ดูแลพอร์ทัลต้องตั้งค่า <code>SECRETS_ENCRYPTION_KEY</code> ก่อน
-        </p>
-      ) : vault.items.length === 0 ? (
-        <Empty>ยังไม่มีรหัสลับในตู้เซฟ</Empty>
-      ) : (
-        <ul className="space-y-2">
-          {vault.items.map((s) => (
-            <SecretRow key={s.id} s={s} canUse={canUse} base={base} onDelete={() => remove(s)} onRevealed={load}
-              onEdit={() => setEditing({ id: s.id, draft: { name: s.name, environment: s.environment, description: s.description ?? "", value: "" } })} />
-          ))}
-        </ul>
-      )}
-      {vault && (
-        <div className="mt-4 border-t border-slate-100 pt-3 text-sm">
-          <p className="font-medium text-slate-700">ผู้ที่เปิดดูค่าได้</p>
-          <ul className="mt-1 flex flex-wrap gap-2">
-            {vault.access.map((p) => (
-              <li key={p.email} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                {p.name} <span className="text-slate-500">· {p.roles.join(", ")}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-slate-500">
-            คือเจ้าของ ผู้ดูแลสำรอง และนักพัฒนาของระบบ (แก้ได้ในคำถาม &quot;ถามใครได้บ้าง&quot; ของคู่มือ) เมื่อมีคนออกจากทีม ให้นำชื่อออกและเปลี่ยนค่าที่เขาเคยเห็น
-            ผู้ดูแลพอร์ทัลเห็นเฉพาะชื่อรายการ ไม่เห็นค่า
-            {!canUse && " คุณเห็นหน้านี้ในฐานะผู้ดูแลพอร์ทัล"}
-          </p>
-        </div>
-      )}
-
-      <Dialog header={editing?.id ? "แก้ไขรหัสลับ" : "เก็บรหัสลับ"} visible={editing !== null} onHide={() => setEditing(null)}
-        className="w-full max-w-lg" footer={
-          <div className="flex justify-end gap-2">
-            <Button label="ยกเลิก" text onClick={() => setEditing(null)} />
-            <Button label="บันทึก" icon="pi pi-check" loading={busy}
-              disabled={!draft?.name.trim() || (!editing?.id && !draft?.value)} onClick={save} />
-          </div>
-        }>
-        {draft && (
-          <div className="space-y-3">
-            <label className="block text-sm">
-              ชื่อ
-              <InputText value={draft.name} onChange={(e) => setDraft({ name: e.target.value })} maxLength={100} autoFocus
-                className="mt-1 w-full font-mono" placeholder="เช่น DB_PASSWORD" />
-            </label>
-            <label className="block text-sm">
-              สภาพแวดล้อม
-              <Dropdown value={draft.environment} options={choiceOptions(meta.secret_environments, label)} optionLabel="label"
-                optionValue="value" onChange={(e) => setDraft({ environment: e.value })} className="mt-1 flex w-full" />
-            </label>
-            <label className="block text-sm">
-              ใช้ทำอะไร
-              <InputText value={draft.description} onChange={(e) => setDraft({ description: e.target.value })} maxLength={500}
-                className="mt-1 w-full" placeholder="เช่น รหัสผ่านผู้ใช้ portal_app ของฐานข้อมูลจริง" />
-            </label>
-            <label className="block text-sm">
-              {editing?.id ? "ค่าใหม่ (เว้นว่างถ้าไม่เปลี่ยน)" : "ค่า"}
-              <InputTextarea value={draft.value} onChange={(e) => setDraft({ value: e.target.value })} rows={3} autoResize
-                spellCheck={false} autoComplete="off" className="mt-1 w-full font-mono text-sm" />
-            </label>
-            <p className="text-xs text-slate-500">ถ้าค่านี้เคยถูกเขียนไว้ในหน้าใดของพอร์ทัลหรือส่งต่อในแชท ให้เปลี่ยนค่าที่ต้นทางก่อน แล้วเก็บค่าใหม่</p>
-          </div>
-        )}
-      </Dialog>
-    </Card>
-  );
-}
+import type { SecretAlert, SystemDetail } from "@/lib/types";
+import SecretBoxesCard from "./SecretBoxes";
 
 function AlertsCard({ system, onChange }: { system: SystemDetail; onChange: () => void }) {
   const { meta, notify } = useSession();
@@ -246,7 +50,7 @@ function AlertsCard({ system, onChange }: { system: SystemDetail; onChange: () =
       </p>
       <ol className="mb-3 list-decimal space-y-0.5 pl-5 text-xs text-slate-600">
         <li>ถือว่ารหัสนั้นรั่วแล้ว: เปลี่ยนหรือยกเลิกที่ต้นทางก่อน (เช่น หน้าตั้งค่า token ของ GitLab หรือ IAM ของ AWS)</li>
-        <li>ลบรหัสออกจากข้อความหรือไฟล์ แล้วเก็บค่าใหม่ไว้ในตู้เซฟด้านบน</li>
+        <li>ลบรหัสออกจากข้อความหรือไฟล์ แล้วเก็บค่าใหม่ไว้ในกล่องรหัสลับด้านล่าง</li>
         <li>ปิดการแจ้งเตือนพร้อมเหตุผล ข้อความเก่ายังอยู่ในประวัติการแก้ไข จึงต้องเปลี่ยนค่าเสมอ ไม่ใช่แค่ลบออก</li>
       </ol>
       {alerts === null ? <Empty>กำลังโหลด…</Empty> : visible.length === 0 ? (
@@ -319,12 +123,12 @@ function AlertsCard({ system, onChange }: { system: SystemDetail; onChange: () =
   );
 }
 
-/** The system's secrets vault and its leak alerts. Shown only to its people (and admins). */
+/** The system's secret boxes and its leak alerts. Shown only to its people (and admins). */
 export default function SecurityTab({ system, onChange }: { system: SystemDetail; onChange: () => void }) {
   return (
     <div className="space-y-4">
       <AlertsCard system={system} onChange={onChange} />
-      <VaultCard system={system} />
+      <SecretBoxesCard system={system} />
     </div>
   );
 }

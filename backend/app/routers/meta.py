@@ -9,7 +9,7 @@ from app.checklist import kb_url
 from app.db import get_db
 from app.enums import (
     ALERT_RESOLUTIONS, ALERT_SEVERITIES, CHECKLIST_STATUSES, CHOICE_LABELS, CHORE_FREQUENCIES, DEBT_RISKS,
-    DEBT_STATUSES, LIFECYCLE_STATES, LINK_KINDS, OPEN_ITEM_KINDS, REVIEW_PLACES, ROLES, SECRET_ENVIRONMENTS,
+    DEBT_STATUSES, LIFECYCLE_STATES, LINK_KINDS, OPEN_ITEM_KINDS, REVIEW_PLACES, ROLES,
     STEPS, SYSTEM_TYPES, WATCH_OUT_KINDS,
 )
 from app.fields import SECTIONS
@@ -46,7 +46,6 @@ def meta(_: Person = Depends(current_person)):
         "sections": SECTIONS,
         "debt_risks": DEBT_RISKS,
         "debt_statuses": [{"key": k, "label": v} for k, v in DEBT_STATUSES.items()],
-        "secret_environments": SECRET_ENVIRONMENTS,
         "alert_resolutions": [{"key": k, "label": v} for k, v in ALERT_RESOLUTIONS.items()],
         "alert_severities": [{"key": k, "label": v} for k, v in ALERT_SEVERITIES.items()],
         "kb_base_url": config.KB_BASE_URL or None,

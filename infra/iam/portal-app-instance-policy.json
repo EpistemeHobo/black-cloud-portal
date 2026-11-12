@@ -14,8 +14,7 @@
       "Resource": [
         "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/db-password",
         "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/jwt-secret-key",
-        "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/origin-verify-secret",
-        "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/vault-key"
+        "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/cloud-dev-portal/origin-verify-secret"
       ]
     },
     {

@@ -32,10 +32,11 @@ export default function HistoryTab({ system }: { system: SystemDetail }) {
     title: "ชื่อรายการ", reason: "เหตุผลที่เลือก", impact: "ผลถ้าปล่อยไว้", fix_plan: "วิธีแก้", risk: "ความเสี่ยง",
     effort: "แรงที่ต้องใช้", target_date: "กำหนดแก้", issue_url: "ลิงก์ issue",
   };
-  // Vault and leak alert events: the name of the secret, never its value.
+  // Secret box and leak alert events: a box's name, never what is in it.
   const secretActions: Record<string, string> = {
-    added: "เก็บรหัสลับในตู้เซฟ", removed: "ลบรหัสลับจากตู้เซฟ", rotated: "เปลี่ยนค่ารหัสลับ", renamed: "เปลี่ยนชื่อรหัสลับ",
-    revealed: "เปิดดูค่ารหัสลับ", alert_resolved: "ปิดการแจ้งเตือนรหัสลับรั่วไหล", alert_reopened: "เปิดการแจ้งเตือนรหัสลับอีกครั้ง",
+    box_created: "สร้างกล่องรหัสลับ", box_version_added: "บันทึกกล่องรหัสลับ", box_key_changed: "เปลี่ยนกุญแจกล่องรหัสลับ",
+    box_renamed: "เปลี่ยนชื่อกล่องรหัสลับ", box_opened: "เปิดกล่องรหัสลับ", box_deleted: "ลบกล่องรหัสลับ",
+    alert_resolved: "ปิดการแจ้งเตือนรหัสลับรั่วไหล", alert_reopened: "เปิดการแจ้งเตือนรหัสลับอีกครั้ง",
   };
   const actions: Record<string, string> = { added: "เพิ่ม", removed: "ลบ", replaced: "แทนที่" };
   const fieldName = (f: string) => fieldLabels[f] ?? coreFields[f] ?? f.replaceAll("_", " ");

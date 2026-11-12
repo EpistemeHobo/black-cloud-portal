@@ -26,9 +26,11 @@ import hmac
 import logging
 import math
 import re
+import secrets as _secrets
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Callable, Iterable, Iterator, Optional, Union
 
 from fastapi import HTTPException
@@ -66,6 +68,7 @@ def _r(pattern: str, flags: int = 0) -> re.Pattern:
 
 # Group 1 is the secret when the pattern has a group; otherwise the whole match.
 RULES: list[Rule] = [
+    Rule("portal_box_key", "กุญแจกล่องรหัสลับของพอร์ทัล", "critical", _r(r"\b(pvk1_[A-Za-z0-9_\-]{43})(?![A-Za-z0-9_\-])")),
     Rule("private_key", "กุญแจส่วนตัว (private key)", "critical", _r(
         r"-----BEGIN[A-Z ]{0,30} PRIVATE KEY(?: BLOCK)?-----[\s\S]{0,200}?[A-Za-z0-9+/]{40,}"
         r"[\s\S]*?(?:-----END[A-Z ]{0,30} PRIVATE KEY(?: BLOCK)?-----|$)")),
@@ -105,8 +108,6 @@ RULES: list[Rule] = [
         r"(?:รหัสผ่าน|รหัส)\s*(?:คือ|:|：|=)\s*[\"'`]?([^\s\"'`,;]{6,200})"), generic=True),
 ]
 RULES_BY_ID = {r.id: r for r in RULES}
-VAULT_RULE = Rule("vault_value", "ค่าจากตู้เซฟรหัสลับของระบบนี้", "critical", _r(r"(?!)"))
-RULES_BY_ID[VAULT_RULE.id] = VAULT_RULE
 
 # Values that are examples or references, not secrets.
 _PLACEHOLDER_WORDS = (
@@ -149,8 +150,25 @@ class Finding:
         return fingerprint(self.secret)
 
 
+FINGERPRINT_KEY_FILE = config.INSTANCE_DIR / "leak-fingerprint.key"
+
+
+@lru_cache(maxsize=1)
+def _fingerprint_key() -> bytes:
+    """Keys the fingerprints, so a stored fingerprint of a short password can't be
+    brute-forced from the database alone. From the session key when it is set (it is
+    in production); otherwise from a key file made once beside the database. Changing
+    JWT_SECRET_KEY changes every fingerprint: known leaks are then reported once more."""
+    if config.JWT_SECRET_FROM_SETTINGS:
+        return hmac.new(config.SECRET_KEY.encode("utf-8"), b"portal-leak-fingerprint-v1", hashlib.sha256).digest()
+    if not FINGERPRINT_KEY_FILE.exists():
+        FINGERPRINT_KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        FINGERPRINT_KEY_FILE.write_text(_secrets.token_urlsafe(48), encoding="utf-8")
+    return FINGERPRINT_KEY_FILE.read_text(encoding="utf-8").strip().encode("utf-8")
+
+
 def fingerprint(secret: str) -> str:
-    return hmac.new(vault.fingerprint_key(), secret.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.new(_fingerprint_key(), secret.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def mask(secret: str) -> str:
@@ -165,18 +183,11 @@ def mask(secret: str) -> str:
     return "…"
 
 
-def find(text: Optional[str], vault_values: Iterable[str] = ()) -> list[Finding]:
+def find(text: Optional[str]) -> list[Finding]:
     """Every likely secret in the text, without overlaps, in order."""
     if not text:
         return []
     found: list[Finding] = []
-    for value in vault_values:
-        if len(value) < 6:
-            continue
-        start = text.find(value)
-        while start != -1:
-            found.append(Finding(VAULT_RULE, start, start + len(value), value, 0))
-            start = text.find(value, start + 1)
     for rule in RULES:
         for m in rule.pattern.finditer(text):
             group = 1 if m.re.groups else 0
@@ -200,11 +211,11 @@ def find(text: Optional[str], vault_values: Iterable[str] = ()) -> list[Finding]
     return kept
 
 
-def redact(text: Optional[str], allowed: set[str] = frozenset(), vault_values: Iterable[str] = ()) -> Optional[str]:
+def redact(text: Optional[str], allowed: set[str] = frozenset()) -> Optional[str]:
     """The text with each likely secret replaced, except those owners said aren't secrets."""
     if not text:
         return text
-    findings = [f for f in find(text, vault_values) if f.fingerprint not in allowed]
+    findings = [f for f in find(text) if f.fingerprint not in allowed]
     for f in reversed(findings):
         text = text[: f.start] + REDACTED + text[f.end:]
     return text
@@ -246,6 +257,10 @@ def places(system: System, docs: Union[bool, list[GuideDoc]] = True) -> Iterator
     for t in system.tech_debts:
         yield Place("tech_debt", str(t.id), f"หนี้ทางเทคนิค: {t.title[:100]}",
                     "\n".join(filter(None, [t.title, t.description, t.reason, t.impact, t.fix_plan, t.issue_url])))
+    for b in system.secret_boxes:
+        # Contents are encrypted; the name, description and version notes are not.
+        yield Place("box", str(b.id), f"กล่องรหัสลับ {b.name[:100]}",
+                    "\n".join(filter(None, [b.name, b.description, *(v.note for v in b.versions)])))
     wanted = system.docs if docs is True else (docs or [])
     for doc in wanted:
         try:
@@ -254,12 +269,6 @@ def places(system: System, docs: Union[bool, list[GuideDoc]] = True) -> Iterator
             logger.exception("Could not read %s for the leak scan", doc.filename)
             continue
         yield Place("doc", str(doc.id), f"ไฟล์แนบ {doc.filename}", text)
-
-
-def vault_values(system: System) -> list[str]:
-    if not system.secrets or not vault.configured():
-        return []
-    return [v for v in (vault.try_decrypt(s.ciphertext) for s in system.secrets) if v]
 
 
 def allowed_fingerprints(system: System) -> set[str]:
@@ -274,8 +283,7 @@ def redactor(viewer: Person, system: System) -> Callable[[Optional[str]], Option
     if viewer.is_admin or vault.can_use(viewer, system):
         return lambda text: text
     allowed = allowed_fingerprints(system)
-    values = vault_values(system)
-    return lambda text: redact(text, allowed, values)
+    return lambda text: redact(text, allowed)
 
 
 # ---------- Push protection ----------
@@ -296,16 +304,15 @@ def check_before_save(system: System, extra: Iterable[Place] = (), allow: bool =
     if allow:
         return
     known = {a.fingerprint for a in system.secret_alerts}
-    values = vault_values(system)
     new = []
     for place in [*places(system, docs=False), *extra]:
-        for f in find(place.text, values):
+        for f in find(place.text):
             if f.rule.severity in BLOCKING and f.fingerprint not in known:
                 new.append(_finding_json(place, f))
     if new:
         raise HTTPException(status_code=422, detail={
             "code": "secret_detected",
-            "message": "ข้อความนี้ดูเหมือนมีรหัสลับ ลบออกแล้วเก็บไว้ในตู้เซฟรหัสลับของระบบแทน",
+            "message": "ข้อความนี้ดูเหมือนมีรหัสลับ ลบออกแล้วเก็บไว้ในกล่องรหัสลับของระบบแทน",
             "findings": new[:20],
         })
 
@@ -321,7 +328,6 @@ def scan_system(db: Session, system: System, source: str,
     Returns (alerts that are new and open, texts scanned, findings).
     """
     now = utcnow()
-    values = vault_values(system)
     existing = {(a.location_kind, a.location_key, a.fingerprint): a for a in system.secret_alerts}
     not_secret = {a.fingerprint: a for a in system.secret_alerts
                   if a.status == "resolved" and a.resolution in NOT_SECRET_RESOLUTIONS}
@@ -332,7 +338,7 @@ def scan_system(db: Session, system: System, source: str,
     scanned = list(places(system, docs))
     for place in scanned:
         texts += 1
-        for f in find(place.text, values):
+        for f in find(place.text):
             findings += 1
             key = (place.kind, place.key, f.fingerprint)
             if key in seen:
@@ -393,7 +399,7 @@ def notify(system_id: str, alert_ids: list[int], exclude_person_id: Optional[int
             *[f"• {RULES_BY_ID[a.rule].label if a.rule in RULES_BY_ID else a.rule} ({a.preview}) "
               f"ที่ {a.location_label}" + (f" บรรทัด {a.line}" if a.line else "") for a in alerts[:10]],
             "ถ้าเป็นรหัสจริง ให้เปลี่ยนหรือยกเลิกรหัสนั้นที่ต้นทางก่อน แล้วลบออกจากข้อความ "
-            "และเก็บค่าใหม่ไว้ในตู้เซฟรหัสลับของระบบ คนที่ไม่ได้อยู่ในทีมของระบบจะเห็นข้อความนั้นเป็น "
+            "และเก็บค่าใหม่ไว้ในกล่องรหัสลับของระบบ คนที่ไม่ได้อยู่ในทีมของระบบจะเห็นข้อความนั้นเป็น "
             f"\"{REDACTED}\" ระหว่างนี้",
         ]
         for person in recipients(system, exclude):

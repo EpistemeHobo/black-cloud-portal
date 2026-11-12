@@ -84,7 +84,7 @@ Rough effort: 3 days
 Checking a token with its provider sends it to an outside service from the internal network, and the portal only stores text and markdown today.
 
 **What happens if we leave it:**
-Some false positives in the generic rules (owners close them once), and secret formats without a known prefix (a LINE channel token, an internal API key) slip through unless written as `password = …`.
+Some false positives in the generic rules (owners close them once), and secret formats without a known prefix (a LINE channel token, an internal API key) slip through unless written as `password = …`. Values kept in a secret box aren't recognised when pasted elsewhere either, since the server can't read the boxes.
 
 **When we plan to fix it:**
 When owners report more than a few false positives a month, or before the portal accepts other file types.
@@ -95,27 +95,27 @@ When owners report more than a few false positives a month, or before the portal
 
 Rough effort: 1 day per batch of rules; 3 days for gitleaks
 
-### TD-5: One encryption key for every vault, kept in an environment variable
+### TD-5: Everyone who opens a secret box shares one key
 
-*Recorded: 2026-11-11 · Issue: #<number> · Risk: Medium*
+*Recorded: 2026-11-12 · Issue: #<number> · Risk: Medium*
 
 **What it is:**
-Every system's vault is encrypted with keys derived from one `SECRETS_ENCRYPTION_KEY`, which the app reads from its environment (Secrets Manager or SSM on AWS, the Kubernetes secret on-premises). There is no envelope encryption with KMS and no key per system. Rotation is manual (`python -m app.vault rotate`).
+Each secret box has one key, generated in the creator's browser and passed on by hand. There are no per-person keys, so the portal can't give or take away one person's access to a box: when someone leaves, the box's key must be changed and the new one given to everyone who stays. A lost key can't be recovered.
 
 **Why we took it on:**
-The on-premises deployment has no KMS, and one key kept outside the database already means a database dump alone gives nothing away.
+The portal is a second copy of secrets whose originals stay with their owners. One key per box is simple to explain and to hand over, and the server never holds anything that opens a box.
 
 **What happens if we leave it:**
-Anyone who gets both the running container's environment and the database can read every vault. Losing the key loses every vault value.
+Keys travel between people outside the portal, where they can leak, and someone who left keeps a working key until the next key change (the box warns about it).
 
 **When we plan to fix it:**
-Before the portal holds production secrets for systems rated Critical.
+If teams start relying on boxes as their only copy, or ask to share a box without passing keys around.
 
 **How to fix it:**
-1. On AWS, encrypt a data key per system with KMS and keep only the encrypted data key in the database.
-2. Or move vault values to AWS Secrets Manager or HashiCorp Vault, keeping only a reference in `system_secret`.
+1. Give each person a key pair made in their browser, with the private key protected by a recovery key they keep.
+2. Wrap each box's key for every member's public key, so handing over happens in the portal, and removing a person means deleting their wrapped copy and changing the box key.
 
-Rough effort: 3 days
+Rough effort: 5 days
 
 ### TD-6: The scheduled leak scan runs inside the web app
 

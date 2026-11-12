@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.enums import (
     ALERT_RESOLUTIONS, CHECKLIST_LEVELS, CHECKLIST_STATUSES, CHORE_FREQUENCIES, DEBT_RISKS, DEBT_STATUSES,
     DOC_EXTENSIONS, DOC_MAX_CHARS, GUIDE_KEYS, LINK_KINDS, OPEN_ITEM_KINDS, REVIEW_PLACES, ROLES,
-    SECRET_ENVIRONMENTS, SYSTEM_TYPES, WATCH_OUT_KINDS,
+    SYSTEM_TYPES, WATCH_OUT_KINDS,
 )
 
 
@@ -289,27 +289,55 @@ class TechDebtIn(BaseModel):
         return v or None
 
 
-class SecretIn(BaseModel):
+# A box's contents, encrypted: base64 of IV + AES-GCM ciphertext. 400,000 characters
+# is about 300 KB, far more than any .env.
+CIPHERTEXT_MAX = 400_000
+
+
+def _box_name(v: str) -> str:
+    v = v.strip()
+    if not v:
+        raise ValueError("กรุณาตั้งชื่อกล่อง")
+    return v
+
+
+class BoxCreate(BaseModel):
+    uid: str = Field(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
     name: str = Field(min_length=1, max_length=100)
-    environment: str = "All"
     description: Optional[str] = Field(default=None, max_length=500)
-    # Required when adding; leave out when changing only the name or description.
-    value: Optional[str] = Field(default=None, min_length=1, max_length=20000)
+    key_id: str = Field(pattern=r"^[0-9a-f]{8,16}$")
+    key_check: str = Field(min_length=40, max_length=200)
+    ciphertext: str = Field(min_length=40, max_length=CIPHERTEXT_MAX)
+    note: Optional[str] = Field(default=None, max_length=300)
 
-    @field_validator("name")
-    @classmethod
-    def _name(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("กรุณาตั้งชื่อรหัสลับ")
-        return v
+    _check_name = field_validator("name")(lambda cls, v: _box_name(v))
 
-    @field_validator("environment")
-    @classmethod
-    def _environment(cls, v: str) -> str:
-        if v not in SECRET_ENVIRONMENTS:
-            raise ValueError("ไม่รู้จักสภาพแวดล้อมนี้")
-        return v
+
+class BoxPatch(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=500)
+
+    _check_name = field_validator("name")(lambda cls, v: _box_name(v))
+
+
+class BoxVersionIn(BaseModel):
+    # The version the browser last saw: a save on top of someone else's is refused (409).
+    expected_version: int = Field(ge=1)
+    ciphertext: str = Field(min_length=40, max_length=CIPHERTEXT_MAX)
+    note: Optional[str] = Field(default=None, max_length=300)
+
+
+class BoxVersionCipher(BaseModel):
+    version: int = Field(ge=1)
+    ciphertext: str = Field(min_length=40, max_length=CIPHERTEXT_MAX)
+
+
+class BoxKeyChange(BaseModel):
+    """Every version, re-encrypted in the browser under a new key, replacing the old ones at once."""
+    expected_version: int = Field(ge=1)
+    key_id: str = Field(pattern=r"^[0-9a-f]{8,16}$")
+    key_check: str = Field(min_length=40, max_length=200)
+    versions: list[BoxVersionCipher] = Field(min_length=1, max_length=1000)
 
 
 class AlertResolveIn(BaseModel):

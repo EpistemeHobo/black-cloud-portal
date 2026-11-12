@@ -26,7 +26,6 @@ export type Meta = {
   sections: Section[];
   debt_risks: string[];
   debt_statuses: KeyLabel[];
-  secret_environments: string[];
   alert_resolutions: KeyLabel[];
   alert_severities: KeyLabel[];
   kb_base_url: string | null;
@@ -138,7 +137,7 @@ export type SystemDetail = {
   /** Technical owners and admins only. */
   can_delete: boolean;
   tech_debt: DebtSummary;
-  /** The vault and leak alerts: only for the system's people (and, without values, admins). */
+  /** Secret boxes and leak alerts: only for the system's people (and, without contents, admins). */
   security: SecuritySummary;
 };
 
@@ -149,8 +148,7 @@ export type SecuritySummary =
   | {
       can_list: true;
       can_use: boolean;
-      vault_enabled: boolean;
-      secrets: number;
+      boxes: number;
       open_alerts: number;
       worst_severity: Severity | null;
     };
@@ -178,26 +176,32 @@ export type TechDebt = {
 
 export type TechDebtList = { items: TechDebt[]; summary: DebtSummary; can_edit: boolean };
 
-export type VaultSecret = {
+/** An encrypted box of secrets. The portal holds only ciphertext; the key stays with people. */
+export type SecretBox = {
   id: number;
+  uid: string;
   name: string;
-  environment: string;
   description: string | null;
+  key_id: string;
+  key_check: string;
+  key_changed_at: string | null;
+  current_version: number;
   created_by: string | null;
   created_at: string | null;
-  updated_by: string | null;
   updated_at: string | null;
-  rotated_at: string | null;
-  last_revealed_at: string | null;
-  last_revealed_by: string | null;
+  last_opened_at: string | null;
+  last_opened_by: string | null;
+  /** People taken off the system since the key changed: they may still hold it. */
+  left_since_key_change: string[];
 };
 
-export type Vault = {
-  enabled: boolean;
+export type SecretBoxes = {
   can_use: boolean;
-  items: VaultSecret[];
+  items: SecretBox[];
   access: { name: string; email: string; roles: string[] }[];
 };
+
+export type BoxVersion = { version: number; note: string | null; created_by: string | null; created_at: string | null };
 
 export type SecretAlert = {
   id: number;
