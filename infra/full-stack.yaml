@@ -193,6 +193,15 @@ Resources:
     Properties:
       Description: Proves to the app that a request came through API Gateway
       GenerateSecretString: {PasswordLength: 48, ExcludePunctuation: true}
+  VaultKeySecret:
+    Type: AWS::SecretsManager::Secret
+    # Kept when the stack is deleted: without it, the vault's values in a database
+    # snapshot could never be read again.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Encrypts the values in each system's secrets vault
+      GenerateSecretString: {PasswordLength: 48, ExcludePunctuation: true}
 
   # ---------- Sign-in: Cognito keeps the passwords, the portal decides who may enter ----------
   UserPool:
@@ -422,6 +431,7 @@ Resources:
         - {Namespace: aws:elasticbeanstalk:application:environmentsecrets, OptionName: DB_PASSWORD, Value: !Ref DbAppSecret}
         - {Namespace: aws:elasticbeanstalk:application:environmentsecrets, OptionName: JWT_SECRET_KEY, Value: !Ref JwtSecret}
         - {Namespace: aws:elasticbeanstalk:application:environmentsecrets, OptionName: ORIGIN_VERIFY_SECRET, Value: !Ref OriginSecret}
+        - {Namespace: aws:elasticbeanstalk:application:environmentsecrets, OptionName: SECRETS_ENCRYPTION_KEY, Value: !Ref VaultKeySecret}
 
   # ---------- Active and hibernate modes ----------
   ModeParameter:

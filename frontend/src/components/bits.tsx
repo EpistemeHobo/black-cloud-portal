@@ -62,3 +62,26 @@ export function ExternalLink({ href, children }: { href: string; children: React
     </a>
   );
 }
+
+/** How serious a leak alert is. */
+export function SeverityTag({ severity }: { severity: string }) {
+  const { meta } = useSession();
+  const text = meta.alert_severities.find((s) => s.key === severity)?.label ?? severity;
+  const tone = severity === "critical" ? "danger" : severity === "high" ? "warning" : "info";
+  return <Tag value={text} severity={tone} />;
+}
+
+/** A technical debt's risk: High, Medium or Low. */
+export function RiskTag({ risk }: { risk: string }) {
+  const { label } = useSession();
+  const tone = risk === "High" ? "danger" : risk === "Medium" ? "warning" : "secondary";
+  return <Tag value={`ความเสี่ยง${label(risk)}`} severity={tone} />;
+}
+
+/** A technical debt's status. */
+export function DebtStatusTag({ status }: { status: string }) {
+  const { meta } = useSession();
+  const text = meta.debt_statuses.find((s) => s.key === status)?.label ?? status;
+  const tone = status === "paid_off" ? "success" : status === "in_progress" ? "info" : status === "wont_fix" ? "secondary" : undefined;
+  return <Tag value={text} severity={tone} />;
+}

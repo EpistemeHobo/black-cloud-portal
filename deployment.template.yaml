@@ -4,7 +4,7 @@
 #
 # Secrets are NOT in this file. Create them once in the cluster:
 #   kubectl -n developer-portal create secret generic developer-portal-secrets \
-#     --from-literal=JWT_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \
+#     --from-literal=JWT_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" #     --from-literal=SECRETS_ENCRYPTION_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \
 #     --from-literal=SMTP_PASSWORD='<Resend API key>' \
 #     --from-literal=SEED_ADMIN_PASSWORD='<first admin password, 12+ characters>'
 apiVersion: v1

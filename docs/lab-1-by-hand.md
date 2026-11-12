@@ -117,6 +117,7 @@ Elastic Beanstalk → **Create application**. Fill in these sections:
 | --- | --- |
 | `ENVIRONMENT` | `staging` (not `production` yet: that requires SMTP) |
 | `JWT_SECRET_KEY` | 48+ random characters: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `SECRETS_ENCRYPTION_KEY` | another 48+ random characters, made the same way. Encrypts each system's secrets vault; keep a copy in your password manager, because without it the vault can't be read |
 | `DB_HOST` | the Aurora writer endpoint |
 | `DB_NAME` | `postgres` |
 | `DB_USER` | `portal` |
@@ -232,6 +233,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 | `DB_NAME` | Plain text | `portal` |
 | `DB_PASSWORD` | **SSM Parameter Store** | `arn:aws:ssm:us-east-1:<account id>:parameter/cloud-dev-portal/db-password` |
 | `JWT_SECRET_KEY` | **SSM Parameter Store** | `arn:aws:ssm:us-east-1:<account id>:parameter/cloud-dev-portal/jwt-secret-key` |
+| `SECRETS_ENCRYPTION_KEY` | **SSM Parameter Store** | `arn:aws:ssm:us-east-1:<account id>:parameter/cloud-dev-portal/vault-key`: a SecureString made like the one in step 2, with the **same** value as before (a new value makes the vault unreadable) |
 
 Your account ID is the 12-digit number in the top-right account menu. Beanstalk reads the values on the instance at each deploy, through the instance profile, so they never appear in the configuration.
 

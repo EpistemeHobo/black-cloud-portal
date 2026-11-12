@@ -7,11 +7,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import leak_scan
 from app import systems_service as svc
 from app.auth import current_person
 from app.checklist import evaluate
 from app.db import get_db
-from app.enums import FINISHED_STATUSES, GUIDE_QUESTIONS, STEPS
+from app.enums import DEBT_CLOSED, FINISHED_STATUSES, GUIDE_QUESTIONS, STEPS
 from app.guide import answered_count
 from app.models import Person, ReviewNote, System
 
@@ -34,10 +35,24 @@ def _aware(dt: Optional[datetime]) -> Optional[datetime]:
     return dt
 
 
-def _reasons(system: System, checklist: dict, last_review: Optional[date], today: date) -> list[dict]:
+def _reasons(system: System, checklist: dict, last_review: Optional[date], today: date,
+             show=lambda text: text) -> list[dict]:
+    # `show` masks text that looks like a secret for viewers outside the system.
     status = {row["code"]: row["status"] for row in checklist["items"]}
     finished = lambda code: status.get(code) in FINISHED_STATUSES  # noqa: E731
     reasons = []
+
+    # A leak waiting to be dealt with comes first: the secret may be in use right now.
+    leaks = [a for a in system.secret_alerts if a.status == "open" and a.severity in ("critical", "high")]
+    if leaks:
+        reasons.append({"code": "secret_leak", "severity": "high",
+                        "label": f"พบรหัสลับรั่วไหลที่ยังไม่ได้จัดการ {len(leaks)} รายการ"})
+
+    late_debt = [d for d in system.tech_debts if d.status not in DEBT_CLOSED and d.risk == "High"
+                 and d.target_date is not None and d.target_date < today]
+    if late_debt:
+        reasons.append({"code": "debt_overdue", "severity": "medium",
+                        "label": f"หนี้ทางเทคนิคความเสี่ยงสูงเลยกำหนดแก้: {show(late_debt[0].title)[:60]}"})
 
     bus = svc.bus_factor(system)
     if system.criticality in IMPORTANT and bus <= 1:
@@ -52,7 +67,7 @@ def _reasons(system: System, checklist: dict, last_review: Optional[date], today
     overdue = [w for w in system.watch_outs if w.kind == "chore" and w.next_due and w.next_due < today]
     if overdue:
         reasons.append({"code": "overdue_chore", "severity": "medium",
-                        "label": f"งานประจำเลยกำหนด: {overdue[0].text[:60]}"})
+                        "label": f"งานประจำเลยกำหนด: {show(overdue[0].text)[:60]}"})
 
     answered = answered_count(system)
     if answered < len(GUIDE_QUESTIONS):
@@ -83,7 +98,7 @@ def _reasons(system: System, checklist: dict, last_review: Optional[date], today
 
 
 @router.get("")
-def dashboard(db: Session = Depends(get_db), _: Person = Depends(current_person)):
+def dashboard(db: Session = Depends(get_db), person: Person = Depends(current_person)):
     today = datetime.now(timezone.utc).date()
     systems = [s for s in svc.all_systems(db) if s.lifecycle_state != "Retired"]
     last_reviews = dict(db.execute(
@@ -101,7 +116,7 @@ def dashboard(db: Session = Depends(get_db), _: Person = Depends(current_person)
         required_due += checklist["summary"]["required_due"]
         required_finished += checklist["summary"]["required_finished"]
         guide_answered += answered_count(system)
-        reasons = _reasons(system, checklist, last_reviews.get(system.id), today)
+        reasons = _reasons(system, checklist, last_reviews.get(system.id), today, leak_scan.redactor(person, system))
         if reasons:
             attention.append({
                 "id": system.id, "name": system.name, "type": system.type, "step": system.step,
@@ -124,6 +139,9 @@ def dashboard(db: Session = Depends(get_db), _: Person = Depends(current_person)
             "required_finished": required_finished,
             "guide_answered": guide_answered,
             "guide_total": len(GUIDE_QUESTIONS) * len(systems),
+            "debt_open": sum(1 for s in systems for d in s.tech_debts if d.status not in DEBT_CLOSED),
+            "debt_high_open": sum(1 for s in systems for d in s.tech_debts
+                                  if d.status not in DEBT_CLOSED and d.risk == "High"),
             "by_step": [{"step": n, "name": name, "count": by_step.get(n, 0)} for n, name in STEPS.items()],
             "by_type": [{"label": k, "count": v} for k, v in Counter(s.type for s in systems).most_common()],
             "by_unit": [{"label": k, "count": v} for k, v in Counter(

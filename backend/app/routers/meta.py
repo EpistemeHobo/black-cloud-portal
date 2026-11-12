@@ -8,8 +8,9 @@ from app.auth import admin_person, current_person
 from app.checklist import kb_url
 from app.db import get_db
 from app.enums import (
-    CHECKLIST_STATUSES, CHOICE_LABELS, CHORE_FREQUENCIES, LIFECYCLE_STATES, LINK_KINDS, OPEN_ITEM_KINDS,
-    REVIEW_PLACES, ROLES, STEPS, SYSTEM_TYPES, WATCH_OUT_KINDS,
+    ALERT_RESOLUTIONS, ALERT_SEVERITIES, CHECKLIST_STATUSES, CHOICE_LABELS, CHORE_FREQUENCIES, DEBT_RISKS,
+    DEBT_STATUSES, LIFECYCLE_STATES, LINK_KINDS, OPEN_ITEM_KINDS, REVIEW_PLACES, ROLES, SECRET_ENVIRONMENTS,
+    STEPS, SYSTEM_TYPES, WATCH_OUT_KINDS,
 )
 from app.fields import SECTIONS
 from app.models import ChecklistItem, Person
@@ -43,6 +44,11 @@ def meta(_: Person = Depends(current_person)):
         "chore_frequencies": [{"key": k, "label": v} for k, v in CHORE_FREQUENCIES.items()],
         "open_item_kinds": [{"key": k, "label": v} for k, v in OPEN_ITEM_KINDS.items()],
         "sections": SECTIONS,
+        "debt_risks": DEBT_RISKS,
+        "debt_statuses": [{"key": k, "label": v} for k, v in DEBT_STATUSES.items()],
+        "secret_environments": SECRET_ENVIRONMENTS,
+        "alert_resolutions": [{"key": k, "label": v} for k, v in ALERT_RESOLUTIONS.items()],
+        "alert_severities": [{"key": k, "label": v} for k, v in ALERT_SEVERITIES.items()],
         "kb_base_url": config.KB_BASE_URL or None,
         # Thai labels for stored English values (types, states, places, choices).
         "choice_labels": CHOICE_LABELS,

@@ -1,6 +1,6 @@
 # Data model: Cloud Internal Developer Portal
 
-*Version 0.3 · Last updated: 2026-10-29*
+*Version 0.4 · Last updated: 2026-11-11*
 *Sources: the App & System Inventory form (`app_inventory_form.gs`) and `CLOUD-STANDARDS.md` (7 development steps, standards A1 to G2)*
 
 ## Design rules
@@ -12,6 +12,7 @@
 5. **People are records, not typed names.** Ownership stays searchable ("what does Tong own?") and correct when people leave.
 6. **Everything has a history.** Who changed what, and when, is recorded for every save.
 7. **Guide, don't block.** A system can move to any step. Missing items are shown, not enforced ([premise 1](premises.md)).
+8. **Secrets have their own place.** Values live encrypted in a system's vault, readable only by its people; text elsewhere that looks like a secret raises an alert and is masked for everyone else ([decision 0009](decisions/0009-secrets.md)).
 
 ## Diagram
 
@@ -29,6 +30,9 @@ erDiagram
     SYSTEM ||--o{ WATCH_OUT : has
     SYSTEM ||--o{ OPEN_ITEM : has
     PERSON ||--o{ REVIEW_NOTE : writes
+    SYSTEM ||--o{ TECH_DEBT : has
+    SYSTEM ||--o{ SYSTEM_SECRET : "keeps in its vault"
+    SYSTEM ||--o{ SECRET_ALERT : "has leaks found in"
 ```
 
 ## Development steps
@@ -106,7 +110,19 @@ Some items are answered by the portal itself (`auto_rule`):
 `system_id`, `reviewer_id`, `date`, `where` (Team meeting · In the portal · Other), `step` (the step the system was at), `note`. Written by a leader or peer after reviewing in a meeting or reading the system's page.
 
 ### Change history
-`entity`, `entity_id`, `field`, `old_value`, `new_value`, `changed_by_id`, `changed_at`. Written automatically on every save.
+`entity`, `entity_id`, `field`, `old_value`, `new_value`, `changed_by_id`, `changed_at`. Written automatically on every save. Vault and alert events are entity `secret`, with the secret's name and never its value; people outside the system see those rows without names, and other values masked where they look like secrets.
+
+### Technical debt
+`system_id`, `title`, `description` (what it is), `reason` (why we took it on), `impact` (what happens if we leave it), `fix_plan`, `risk` (High · Medium · Low), `effort`, `target_date`, `issue_url`, `status` (Open · In progress · Paid off · Won't fix), `created_by_id`, `closed_at`. The same fields as [technical_debt.md](technical_debt.md). Readable by everyone, kept by the system's editors, logged in the change history.
+
+### System secret (the vault)
+`system_id`, `name` and `environment` (All · Dev · Staging · Prod; unique together), `description`, `ciphertext` (Fernet, `vault.py`), `created_by_id`, `updated_by_id`, `rotated_at` (when the value last changed), `last_revealed_at`, `last_revealed_by_id`. Only the system's owners, backup owner and developers can read the value; admins see the rest.
+
+### Secret alert
+Something that looks like a secret, found in a system's text (`leak_scan.py`). `system_id`, `rule`, `severity` (critical · high · medium), where it was (`location_kind`: field, doc, watch_out, open_item, link, dependency, role, review, checklist, tech_debt; `location_key`; `location_label`; `line`), `preview` (masked), `fingerprint` (HMAC-SHA256 of the secret; the secret itself is never stored), `status` (open · resolved), `resolution` (revoked · moved_to_vault · false_positive · used_in_tests · wont_fix), `resolution_note`, `resolved_by_id`, `still_present`, `source` (save · scheduled · manual · cli), `first_seen_at`, `last_seen_at`, `notified_at`. One per secret per place.
+
+### Secret scan run
+One scan of every system: `trigger` (scheduled · manual · cli), `started_at`, `finished_at`, `systems_scanned`, `texts_scanned`, `findings`, `new_alerts`, `error`, `started_by_email`.
 
 ## Inventory form mapping
 

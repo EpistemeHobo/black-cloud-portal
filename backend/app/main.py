@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 import logging
 import time
@@ -10,10 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app import config, history  # noqa: F401  -- history registers the change log listener
+from app import config, history, leak_scan  # noqa: F401  -- history registers the change log listener
 from app.auth import seed_admin
 from app.db import SessionLocal
-from app.routers import auth, dashboard, meta, people, systems
+from app.routers import auth, dashboard, debt, meta, people, security, systems
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("portal")
@@ -24,7 +25,10 @@ async def lifespan(_app: FastAPI):
     logger.info("Portal starting | environment=%s", config.ENVIRONMENT)
     with SessionLocal() as db:
         seed_admin(db)
+    # The scheduled leak scan of every system (leak_scan.py); off when the interval is 0.
+    scan_task = asyncio.create_task(leak_scan.scheduler())
     yield
+    scan_task.cancel()
 
 
 app = FastAPI(
@@ -74,7 +78,8 @@ async def security_headers(request: Request, call_next):
     return response
 
 
-for router in (auth.router, dashboard.router, meta.router, people.router, systems.router):
+for router in (auth.router, dashboard.router, debt.router, meta.router, people.router, security.router,
+               systems.router):
     app.include_router(router)
 
 

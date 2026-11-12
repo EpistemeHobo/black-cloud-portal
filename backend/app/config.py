@@ -126,3 +126,20 @@ ORIGIN_VERIFY_SECRET = os.environ.get("ORIGIN_VERIFY_SECRET", "")
 DOCS_BUCKET = os.environ.get("DOCS_BUCKET", "").strip()
 DOCS_PREFIX = os.environ.get("DOCS_PREFIX", "").strip().strip("/")
 AWS_REGION = (os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1").strip()
+
+# The secrets vault (vault.py) encrypts each stored value with this key: 32+ random
+# characters. Comma-separated to rotate: the first encrypts, every one decrypts, so
+# put the new key first, run `python -m app.vault rotate`, then drop the old one.
+# Required in production. Unset elsewhere: with SQLite a key file is made next to the
+# database (instance/vault.key, the same lifetime as the data); with PostgreSQL the
+# vault is switched off rather than encrypt with a key that a redeploy would lose.
+SECRETS_ENCRYPTION_KEYS = _list("SECRETS_ENCRYPTION_KEY")
+if IS_PRODUCTION and not SECRETS_ENCRYPTION_KEYS:
+    raise RuntimeError("SECRETS_ENCRYPTION_KEY must be set when ENVIRONMENT=production.")
+if any(len(k) < 32 for k in SECRETS_ENCRYPTION_KEYS):
+    raise RuntimeError("Each SECRETS_ENCRYPTION_KEY must be at least 32 characters.")
+
+# Every system is scanned for leaked secrets this often (leak_scan.py), besides the
+# scan of each change as it is saved. 0 turns the scheduled scan off (the tests;
+# or when a cron job runs `python -m app.leak_scan` instead).
+SECRET_SCAN_INTERVAL_HOURS = float(os.environ.get("SECRET_SCAN_INTERVAL_HOURS", "24"))

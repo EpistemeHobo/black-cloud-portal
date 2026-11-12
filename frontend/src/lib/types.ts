@@ -24,6 +24,11 @@ export type Meta = {
   chore_frequencies: KeyLabel[];
   open_item_kinds: KeyLabel[];
   sections: Section[];
+  debt_risks: string[];
+  debt_statuses: KeyLabel[];
+  secret_environments: string[];
+  alert_resolutions: KeyLabel[];
+  alert_severities: KeyLabel[];
   kb_base_url: string | null;
   /** Stored English values (system types, states, choices…) to Thai display labels. */
   choice_labels: Record<string, string>;
@@ -132,6 +137,89 @@ export type SystemDetail = {
   can_edit_catalog: boolean;
   /** Technical owners and admins only. */
   can_delete: boolean;
+  tech_debt: DebtSummary;
+  /** The vault and leak alerts: only for the system's people (and, without values, admins). */
+  security: SecuritySummary;
+};
+
+export type DebtSummary = { open: number; high_open: number; overdue: number };
+
+export type SecuritySummary =
+  | { can_list: false; can_use: false }
+  | {
+      can_list: true;
+      can_use: boolean;
+      vault_enabled: boolean;
+      secrets: number;
+      open_alerts: number;
+      worst_severity: Severity | null;
+    };
+
+export type Severity = "critical" | "high" | "medium";
+
+export type TechDebt = {
+  id: number;
+  title: string;
+  description: string | null;
+  reason: string | null;
+  impact: string | null;
+  fix_plan: string | null;
+  risk: "High" | "Medium" | "Low";
+  effort: string | null;
+  target_date: string | null;
+  issue_url: string | null;
+  status: "open" | "in_progress" | "paid_off" | "wont_fix";
+  overdue: boolean;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  closed_at: string | null;
+};
+
+export type TechDebtList = { items: TechDebt[]; summary: DebtSummary; can_edit: boolean };
+
+export type VaultSecret = {
+  id: number;
+  name: string;
+  environment: string;
+  description: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
+  rotated_at: string | null;
+  last_revealed_at: string | null;
+  last_revealed_by: string | null;
+};
+
+export type Vault = {
+  enabled: boolean;
+  can_use: boolean;
+  items: VaultSecret[];
+  access: { name: string; email: string; roles: string[] }[];
+};
+
+export type SecretAlert = {
+  id: number;
+  system_id: string;
+  system_name?: string;
+  rule: string;
+  rule_label: string;
+  severity: Severity;
+  location_kind: string;
+  location_key: string;
+  location_label: string;
+  line: number | null;
+  preview: string;
+  status: "open" | "resolved";
+  resolution: string | null;
+  resolution_note: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  still_present: boolean;
+  source: string;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
 };
 
 export type ChecklistRow = {

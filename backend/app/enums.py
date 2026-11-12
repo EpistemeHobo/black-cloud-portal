@@ -32,6 +32,10 @@ ROLES = {
 }
 # Roles whose holders may edit the system.
 EDITOR_ROLES = {"business_owner", "technical_owner", "backup_owner", "developer"}
+# Roles whose holders may open the system's secrets vault and see its leak alerts:
+# the people who build it and the backup owner who takes it over. Not admins,
+# auditors, support contacts or previous owners (docs/decisions/0009-secrets.md).
+SECRET_ROLES = {"business_owner", "technical_owner", "backup_owner", "developer"}
 # Roles that count towards the bus factor: people who can fix it.
 BUS_FACTOR_ROLES = {"technical_owner", "backup_owner", "developer"}
 
@@ -86,6 +90,31 @@ CHECKLIST_LEVELS = ["required", "recommended"]
 
 REVIEW_PLACES = ["Team meeting", "In the portal", "Other"]
 
+# Technical debt (docs/technical_debt.md has the same fields for the portal's own).
+DEBT_RISKS = ["High", "Medium", "Low"]
+DEBT_STATUSES = {
+    "open": "ยังไม่ได้แก้",
+    "in_progress": "กำลังแก้",
+    "paid_off": "แก้แล้ว",
+    "wont_fix": "ตัดสินใจไม่แก้",
+}
+DEBT_CLOSED = {"paid_off", "wont_fix"}
+
+# The secrets vault: which environment a secret is for.
+SECRET_ENVIRONMENTS = ["All", "Dev", "Staging", "Prod"]
+
+# How an owner closes a leak alert (like GitHub's secret scanning).
+ALERT_RESOLUTIONS = {
+    "revoked": "เปลี่ยนหรือยกเลิกรหัสนั้นแล้ว",
+    "moved_to_vault": "ย้ายไปเก็บในตู้เซฟและลบออกจากข้อความแล้ว",
+    "false_positive": "ไม่ใช่รหัสลับ (ตรวจผิด)",
+    "used_in_tests": "เป็นค่าทดสอบ ไม่ใช่รหัสจริง",
+    "wont_fix": "ยอมรับความเสี่ยง",
+}
+# Resolutions that say the text is not a secret: it is shown to everyone again.
+NOT_SECRET_RESOLUTIONS = {"false_positive", "used_in_tests"}
+ALERT_SEVERITIES = {"critical": "วิกฤต", "high": "สูง", "medium": "ปานกลาง"}
+
 # Thai display labels for stored English values: system types, lifecycle
 # states, review places, checklist levels and the choices in fields.py.
 # A value missing here is shown as it is.
@@ -111,6 +140,8 @@ CHOICE_LABELS = {
     # Checklist levels
     "required": "จำเป็น",
     "recommended": "แนะนำ",
+    # Vault environments
+    "All": "ทุกสภาพแวดล้อม",
     # Field choices (fields.py)
     "Unknown": "ไม่ทราบ",
     "In-house": "พัฒนาเอง",

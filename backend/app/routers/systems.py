@@ -4,12 +4,13 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app import doc_store
+from app import doc_store, leak_scan, vault
 from app import systems_service as svc
 from app import transfer
 from app.auth import current_person
 from app.checklist import evaluate
 from app.db import get_db
+from app.leak_guard import LeakGuard
 from app.models import (
     ChangeLog, ChecklistAnswer, Dependency, GuideDoc, Link, OpenItem, Person, ReviewNote, System, SystemRole,
     Unit, WatchOut,
@@ -30,12 +31,14 @@ def list_systems(db: Session = Depends(get_db), person: Person = Depends(current
         key = system.standards_version_id
         if key not in items_cache:
             items_cache[key] = svc.items_for(db, system)
-        result.append(svc.summary(db, system, items_cache[key]))
+        row = svc.summary(db, system, items_cache[key])
+        row["description"] = leak_scan.redactor(person, system)(row["description"])
+        result.append(row)
     return result
 
 
 @router.post("", status_code=201)
-def create_system(body: SystemCreate, db: Session = Depends(get_db),
+def create_system(body: SystemCreate, guard: LeakGuard = Depends(), db: Session = Depends(get_db),
                   person: Person = Depends(current_person)):
     if body.owning_unit_id is not None and db.get(Unit, body.owning_unit_id) is None:
         raise HTTPException(status_code=422, detail="ไม่พบหน่วยงานนี้")
@@ -48,16 +51,23 @@ def create_system(body: SystemCreate, db: Session = Depends(get_db),
         standards_version_id=standards.id if standards else None,
     )
     system.roles.append(SystemRole(person_id=person.id, role="technical_owner"))
+    guard.check(system)
     db.add(system)
     db.commit()
+    guard.after(system.id)
     return svc.detail(db, svc.get_system(db, system.id), person)
 
 
 @router.post("/import", status_code=201)
-def import_system(body: transfer.ImportIn, db: Session = Depends(get_db),
+def import_system(body: transfer.ImportIn, guard: LeakGuard = Depends(), db: Session = Depends(get_db),
                   person: Person = Depends(current_person)):
-    """Register a new system from an exported folder (system.json plus its .md files)."""
+    """Register a new system from an exported folder (system.json plus its .md files).
+
+    Not refused for secrets (the folder came from another portal as it is), but
+    scanned in full, so its owners get the alerts at once.
+    """
     system = transfer.import_system(db, body, person)
+    guard.after(system.id, docs=True)
     return svc.detail(db, svc.get_system(db, system.id), person)
 
 
@@ -77,12 +87,14 @@ def get_system(system_id: str, db: Session = Depends(get_db), person: Person = D
 
 
 @router.patch("/{system_id}")
-def update_system(system_id: str, data: dict = Body(...), db: Session = Depends(get_db),
-                  person: Person = Depends(current_person)):
+def update_system(system_id: str, data: dict = Body(...), guard: LeakGuard = Depends(),
+                  db: Session = Depends(get_db), person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     svc.require_patch_rights(person, system, set(data))
     svc.apply_patch(db, system, data)
+    guard.check(system)
     db.commit()
+    guard.after(system_id)
     return svc.detail(db, svc.get_system(db, system_id), person)
 
 
@@ -122,7 +134,8 @@ def verify(system_id: str, db: Session = Depends(get_db), person: Person = Depen
 
 
 @router.put("/{system_id}/roles")
-def set_roles(system_id: str, body: list[RoleIn], db: Session = Depends(get_db),
+def set_roles(system_id: str, body: list[RoleIn], guard: LeakGuard = Depends(),
+        db: Session = Depends(get_db),
               person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     svc.require_editor(person, system)
@@ -145,12 +158,15 @@ def set_roles(system_id: str, body: list[RoleIn], db: Session = Depends(get_db),
         else:
             role.reachable_until = r.reachable_until
             role.note = note
+    guard.check(system)
     db.commit()
+    guard.after(system_id)
     return svc.detail(db, svc.get_system(db, system_id), person)
 
 
 @router.put("/{system_id}/links")
-def set_links(system_id: str, body: list[LinkIn], db: Session = Depends(get_db),
+def set_links(system_id: str, body: list[LinkIn], guard: LeakGuard = Depends(),
+        db: Session = Depends(get_db),
               person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     svc.require_editor(person, system)
@@ -162,12 +178,15 @@ def set_links(system_id: str, body: list[LinkIn], db: Session = Depends(get_db),
     for kind, url, label in wanted:
         if (kind, url, label) not in current:
             system.links.append(Link(kind=kind, url=url, label=label))
+    guard.check(system)
     db.commit()
+    guard.after(system_id)
     return svc.detail(db, svc.get_system(db, system_id), person)
 
 
 @router.put("/{system_id}/dependencies")
-def set_dependencies(system_id: str, body: list[DependencyIn], db: Session = Depends(get_db),
+def set_dependencies(system_id: str, body: list[DependencyIn], guard: LeakGuard = Depends(),
+        db: Session = Depends(get_db),
                      person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     svc.require_editor(person, system)
@@ -190,12 +209,15 @@ def set_dependencies(system_id: str, body: list[DependencyIn], db: Session = Dep
             system.dependencies.append(Dependency(to_system_id=to_id, external_name=external, note=note))
     if wanted:
         svc.clear_nothing(system, "deps")
+    guard.check(system)
     db.commit()
+    guard.after(system_id)
     return svc.detail(db, svc.get_system(db, system_id), person)
 
 
 @router.put("/{system_id}/watch-outs")
-def set_watch_outs(system_id: str, body: list[WatchOutIn], db: Session = Depends(get_db),
+def set_watch_outs(system_id: str, body: list[WatchOutIn], guard: LeakGuard = Depends(),
+        db: Session = Depends(get_db),
                    person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     svc.require_editor(person, system)
@@ -218,12 +240,15 @@ def set_watch_outs(system_id: str, body: list[WatchOutIn], db: Session = Depends
             system.watch_outs.remove(item)
     if body:
         svc.clear_nothing(system, "watch")
+    guard.check(system)
     db.commit()
+    guard.after(system_id)
     return svc.detail(db, svc.get_system(db, system_id), person)
 
 
 @router.put("/{system_id}/open-items")
-def set_open_items(system_id: str, body: list[OpenItemIn], db: Session = Depends(get_db),
+def set_open_items(system_id: str, body: list[OpenItemIn], guard: LeakGuard = Depends(),
+        db: Session = Depends(get_db),
                    person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     svc.require_editor(person, system)
@@ -252,16 +277,20 @@ def set_open_items(system_id: str, body: list[OpenItemIn], db: Session = Depends
             system.open_items.remove(item)
     if body:
         svc.clear_nothing(system, "progress")
+    guard.check(system)
     db.commit()
+    guard.after(system_id)
     return svc.detail(db, svc.get_system(db, system_id), person)
 
 
 @router.post("/{system_id}/docs")
-def upload_doc(system_id: str, body: DocIn, db: Session = Depends(get_db),
+def upload_doc(system_id: str, body: DocIn, guard: LeakGuard = Depends(), db: Session = Depends(get_db),
                person: Person = Depends(current_person)):
     """Attach a markdown file to a guide question. The same file name replaces the old copy."""
     system = svc.get_system(db, system_id)
     svc.require_editor(person, system)
+    # Checked before anything is uploaded: a refused file must not reach S3.
+    guard.check(system, [leak_scan.Place("doc", "new", f"ไฟล์แนบ {body.filename}", body.content)])
     doc = next((d for d in system.docs if d.question == body.question and d.filename == body.filename), None)
     if doc is None:
         doc = GuideDoc(question=body.question, filename=body.filename)
@@ -270,11 +299,12 @@ def upload_doc(system_id: str, body: DocIn, db: Session = Depends(get_db),
     doc.updated_by = person
     svc.clear_nothing(system, body.question)
     db.commit()
+    guard.after(system_id, docs=[doc])
     return svc.detail(db, svc.get_system(db, system_id), person)
 
 
 @router.delete("/{system_id}/docs/{doc_id}")
-def delete_doc(system_id: str, doc_id: int, db: Session = Depends(get_db),
+def delete_doc(system_id: str, doc_id: int, guard: LeakGuard = Depends(), db: Session = Depends(get_db),
                person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     svc.require_editor(person, system)
@@ -283,18 +313,23 @@ def delete_doc(system_id: str, doc_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="ไม่พบไฟล์นี้")
     system.docs.remove(doc)
     db.commit()
+    guard.after(system_id)
     return svc.detail(db, svc.get_system(db, system_id), person)
 
 
 @router.get("/{system_id}/checklist")
 def get_checklist(system_id: str, db: Session = Depends(get_db), person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
-    return evaluate(system, svc.items_for(db, system))
+    show = leak_scan.redactor(person, system)
+    result = evaluate(system, svc.items_for(db, system))
+    for row in result["items"]:
+        row["evidence"] = show(row["evidence"])
+    return result
 
 
 @router.put("/{system_id}/checklist/{code}")
-def answer_item(system_id: str, code: str, body: AnswerIn, db: Session = Depends(get_db),
-                person: Person = Depends(current_person)):
+def answer_item(system_id: str, code: str, body: AnswerIn, guard: LeakGuard = Depends(),
+                db: Session = Depends(get_db), person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     svc.require_editor(person, system)
     item = next((i for i in svc.items_for(db, system) if i.code == code), None)
@@ -312,13 +347,15 @@ def answer_item(system_id: str, code: str, body: AnswerIn, db: Session = Depends
         answer.status = body.status
         answer.evidence = evidence
         answer.updated_by_id = person.id
+    guard.check(system)
     db.commit()
+    guard.after(system_id)
     return evaluate(svc.get_system(db, system_id), svc.items_for(db, system))
 
 
 @router.get("/{system_id}/reviews")
 def list_reviews(system_id: str, db: Session = Depends(get_db), person: Person = Depends(current_person)):
-    svc.get_system(db, system_id)
+    show = leak_scan.redactor(person, svc.get_system(db, system_id))
     notes = db.scalars(
         select(ReviewNote).where(ReviewNote.system_id == system_id)
         .options(selectinload(ReviewNote.reviewer))
@@ -326,14 +363,14 @@ def list_reviews(system_id: str, db: Session = Depends(get_db), person: Person =
     ).all()
     return [
         {"id": n.id, "review_date": n.review_date.isoformat(), "place": n.place, "step": n.step,
-         "note": n.note, "reviewer": {"id": n.reviewer.id, "name": n.reviewer.name},
+         "note": show(n.note), "reviewer": {"id": n.reviewer.id, "name": n.reviewer.name},
          "can_delete": person.is_admin or n.reviewer_id == person.id}
         for n in notes
     ]
 
 
 @router.post("/{system_id}/reviews", status_code=201)
-def add_review(system_id: str, body: ReviewIn, db: Session = Depends(get_db),
+def add_review(system_id: str, body: ReviewIn, guard: LeakGuard = Depends(), db: Session = Depends(get_db),
                person: Person = Depends(current_person)):
     # Any signed-in person can review: leaders and peers alike.
     system = svc.get_system(db, system_id)
@@ -341,12 +378,14 @@ def add_review(system_id: str, body: ReviewIn, db: Session = Depends(get_db),
         reviewer_id=person.id, review_date=body.review_date, place=body.place,
         step=system.step, note=body.note.strip(),
     ))
+    guard.check(system)
     db.commit()
+    guard.after(system_id)
     return list_reviews(system_id, db, person)
 
 
 @router.delete("/{system_id}/reviews/{review_id}")
-def delete_review(system_id: str, review_id: int, db: Session = Depends(get_db),
+def delete_review(system_id: str, review_id: int, guard: LeakGuard = Depends(), db: Session = Depends(get_db),
                   person: Person = Depends(current_person)):
     note = db.get(ReviewNote, review_id)
     if note is None or note.system_id != system_id:
@@ -355,6 +394,7 @@ def delete_review(system_id: str, review_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=403, detail="เฉพาะผู้ทบทวนหรือผู้ดูแลระบบเท่านั้นที่ลบบันทึกการทบทวนได้")
     db.delete(note)
     db.commit()
+    guard.after(system_id)
     return list_reviews(system_id, db, person)
 
 
@@ -362,17 +402,24 @@ def delete_review(system_id: str, review_id: int, db: Session = Depends(get_db),
 def history(system_id: str, db: Session = Depends(get_db), person: Person = Depends(current_person)):
     system = svc.get_system(db, system_id)
     hidden = set() if svc.can_edit(person, system) or person.is_auditor else svc.RESTRICTED_FIELDS
+    # Vault and alert events: their names are for the people who may see the vault.
+    hide_secret_events = not vault.can_list(person, system)
+    show = leak_scan.redactor(person, system)
     rows = db.scalars(
         select(ChangeLog).where(ChangeLog.system_id == system_id)
         .options(selectinload(ChangeLog.changed_by))
         .order_by(ChangeLog.changed_at.desc(), ChangeLog.id.desc()).limit(300)
     ).all()
-    return [
-        {"changed_at": r.changed_at.isoformat(), "entity": r.entity, "entity_id": r.entity_id,
-         "field": r.field,
-         "old_value": None if r.field in hidden else r.old_value,
-         "new_value": None if r.field in hidden else r.new_value,
-         "hidden": r.field in hidden,
-         "changed_by": r.changed_by.name if r.changed_by else None}
-        for r in rows
-    ]
+    result = []
+    for r in rows:
+        is_hidden = r.field in hidden or (r.entity == "secret" and hide_secret_events)
+        result.append({
+            "changed_at": r.changed_at.isoformat(), "entity": r.entity,
+            "entity_id": "" if r.entity == "secret" and hide_secret_events else r.entity_id,
+            "field": r.field,
+            "old_value": None if is_hidden else show(r.old_value),
+            "new_value": None if is_hidden else show(r.new_value),
+            "hidden": is_hidden,
+            "changed_by": r.changed_by.name if r.changed_by else None,
+        })
+    return result

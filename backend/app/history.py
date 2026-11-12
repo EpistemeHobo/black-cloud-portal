@@ -13,16 +13,16 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     ChangeLog, ChecklistAnswer, ChecklistItem, Dependency, GuideDoc, Link, OpenItem, Person, ReviewNote,
-    System, SystemRole, WatchOut,
+    System, SystemRole, TechDebt, WatchOut,
 )
 
 # Records that belong to one system and are logged as added, removed or changed.
-_CHILDREN = (SystemRole, Link, Dependency, ReviewNote, WatchOut, OpenItem)
+_CHILDREN = (SystemRole, Link, Dependency, ReviewNote, WatchOut, OpenItem, TechDebt)
 
 PERSON_KEY = "person_id"
 
 # Not worth recording: they change on every save, or are recorded by another row.
-_SKIP = {"id", "created_at", "updated_at", "system_id", "updated_by_id", "item_id"}
+_SKIP = {"id", "created_at", "updated_at", "system_id", "updated_by_id", "item_id", "created_by_id"}
 
 
 def _fmt(value: Any) -> Optional[str]:
@@ -59,13 +59,15 @@ def _describe(session: Session, obj: Any) -> tuple[Optional[str], str, str]:
         return system_id, "watch_out", f"{obj.kind}: {obj.text[:200]}"
     if isinstance(obj, OpenItem):
         return system_id, "open_item", f"{obj.kind}: {obj.text[:200]}"
+    if isinstance(obj, TechDebt):
+        return system_id, "tech_debt", obj.title[:200]
     item = session.get(ChecklistItem, obj.item_id)
     return system_id, "checklist", item.code if item else str(obj.item_id)
 
 
 # A system's lists. A row taken out of one (system.links.remove(...)) is only
 # deleted later, during the flush, so it isn't in session.deleted yet.
-_COLLECTIONS = ("roles", "links", "dependencies", "reviews", "watch_outs", "open_items", "docs")
+_COLLECTIONS = ("roles", "links", "dependencies", "reviews", "watch_outs", "open_items", "docs", "tech_debts")
 
 
 def _removed(session: Session) -> list:
@@ -123,7 +125,7 @@ def _record_changes(session: Session, _flush_context, _instances) -> None:
              new_value=None if action == "removed" else obj.filename)
 
     for obj in list(session.dirty):
-        if not isinstance(obj, (System, ChecklistAnswer, ChecklistItem, SystemRole, WatchOut, OpenItem)):
+        if not isinstance(obj, (System, ChecklistAnswer, ChecklistItem, SystemRole, WatchOut, OpenItem, TechDebt)):
             continue
         state = inspect(obj)
         for attr in state.mapper.column_attrs:
@@ -139,8 +141,8 @@ def _record_changes(session: Session, _flush_context, _instances) -> None:
             if isinstance(obj, System):
                 _log(session, system_id=obj.id, entity="system", entity_id=obj.id,
                      field=attr.key, old_value=old, new_value=new)
-            elif isinstance(obj, (SystemRole, WatchOut, OpenItem)):
-                if attr.key in ("sort_order", "done_by_id"):
+            elif isinstance(obj, (SystemRole, WatchOut, OpenItem, TechDebt)):
+                if attr.key in ("sort_order", "done_by_id", "closed_at"):
                     continue
                 system_id, entity, summary = _describe(session, obj)
                 _log(session, system_id=system_id, entity=entity, entity_id=str(obj.id),
@@ -162,3 +164,12 @@ def _record_changes(session: Session, _flush_context, _instances) -> None:
             if obj.evidence:
                 _log(session, system_id=system_id, entity="checklist", entity_id=code,
                      field="evidence", new_value=obj.evidence)
+
+
+def log_secret_event(session: Session, system_id: str, name: str, action: str, detail: Optional[str] = None) -> None:
+    """A vault or leak alert event in the system's history. Never the value: only its name.
+
+    The history page shows these to the system's people and admins only (routers/systems.py).
+    """
+    _log(session, system_id=system_id, entity="secret", entity_id=name[:50], field=action,
+         new_value=detail)

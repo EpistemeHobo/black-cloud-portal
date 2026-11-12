@@ -130,6 +130,8 @@ function Header() {
     { href: "/", label: "แดชบอร์ด", active: pathname === "/" },
     { href: "/systems/", label: "ระบบทั้งหมด", active: pathname.startsWith("/system") },
     { href: "/new/", label: "ลงทะเบียนระบบ", active: pathname.startsWith("/new") },
+    { href: "/debt/", label: "หนี้ทางเทคนิค", active: pathname.startsWith("/debt") },
+    { href: "/security/", label: "ความปลอดภัย", active: pathname.startsWith("/security") },
   ];
 
   // Admins see how many sign-ups wait for them, refreshed on every page change.

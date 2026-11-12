@@ -4,8 +4,9 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from app.enums import (
-    CHECKLIST_LEVELS, CHECKLIST_STATUSES, CHORE_FREQUENCIES, DOC_EXTENSIONS, DOC_MAX_CHARS, GUIDE_KEYS, LINK_KINDS,
-    OPEN_ITEM_KINDS, REVIEW_PLACES, ROLES, SYSTEM_TYPES, WATCH_OUT_KINDS,
+    ALERT_RESOLUTIONS, CHECKLIST_LEVELS, CHECKLIST_STATUSES, CHORE_FREQUENCIES, DEBT_RISKS, DEBT_STATUSES,
+    DOC_EXTENSIONS, DOC_MAX_CHARS, GUIDE_KEYS, LINK_KINDS, OPEN_ITEM_KINDS, REVIEW_PLACES, ROLES,
+    SECRET_ENVIRONMENTS, SYSTEM_TYPES, WATCH_OUT_KINDS,
 )
 
 
@@ -250,4 +251,75 @@ class ItemPatch(BaseModel):
     def _types(cls, v: Optional[list[str]]) -> Optional[list[str]]:
         if v is not None and any(t not in SYSTEM_TYPES for t in v):
             raise ValueError("ไม่รู้จักประเภทระบบนี้")
+        return v
+
+
+class TechDebtIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    reason: Optional[str] = Field(default=None, max_length=5000)
+    impact: Optional[str] = Field(default=None, max_length=5000)
+    fix_plan: Optional[str] = Field(default=None, max_length=5000)
+    risk: str = "Medium"
+    effort: Optional[str] = Field(default=None, max_length=50)
+    target_date: Optional[date] = None
+    issue_url: Optional[str] = Field(default=None, max_length=1000)
+    status: str = "open"
+
+    @field_validator("risk")
+    @classmethod
+    def _risk(cls, v: str) -> str:
+        if v not in DEBT_RISKS:
+            raise ValueError("ความเสี่ยงต้องเป็น สูง ปานกลาง หรือ ต่ำ")
+        return v
+
+    @field_validator("status")
+    @classmethod
+    def _status(cls, v: str) -> str:
+        if v not in DEBT_STATUSES:
+            raise ValueError("ไม่รู้จักสถานะนี้")
+        return v
+
+    @field_validator("issue_url")
+    @classmethod
+    def _issue_url(cls, v: Optional[str]) -> Optional[str]:
+        v = (v or "").strip()
+        if v and not v.lower().startswith(("https://", "http://")):
+            raise ValueError("ลิงก์ issue ต้องขึ้นต้นด้วย https:// หรือ http://")
+        return v or None
+
+
+class SecretIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    environment: str = "All"
+    description: Optional[str] = Field(default=None, max_length=500)
+    # Required when adding; leave out when changing only the name or description.
+    value: Optional[str] = Field(default=None, min_length=1, max_length=20000)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("กรุณาตั้งชื่อรหัสลับ")
+        return v
+
+    @field_validator("environment")
+    @classmethod
+    def _environment(cls, v: str) -> str:
+        if v not in SECRET_ENVIRONMENTS:
+            raise ValueError("ไม่รู้จักสภาพแวดล้อมนี้")
+        return v
+
+
+class AlertResolveIn(BaseModel):
+    # None reopens the alert.
+    resolution: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("resolution")
+    @classmethod
+    def _resolution(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ALERT_RESOLUTIONS:
+            raise ValueError("ไม่รู้จักวิธีปิดการแจ้งเตือนนี้")
         return v
