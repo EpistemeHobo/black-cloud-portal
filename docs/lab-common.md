@@ -103,8 +103,12 @@ Lab page → **AWS Details → AWS CLI: Show** → copy the block over everythin
 | The Beanstalk address answers "เปิดพอร์ทัลผ่านที่อยู่ HTTPS ของพอร์ทัล" | Expected once the app is locked to its HTTPS address: use that address. A 403 at the HTTPS address too means the secret in API Gateway differs from the app's |
 | `Service Unavailable` at the HTTPS address | The app is asleep or still starting: open the launcher link (`…/launch`), or wait a few minutes |
 | Stack shows `CREATE_COMPLETE` but the portal never answers | Beanstalk counts its environment as created even if the app crashes: Beanstalk → **Events** and **Logs** |
-| Environment "Severe", log shows `connection timeout` to the database | `portal-app-sg` isn't on the instance, or `portal-db-sg` doesn't allow 5432 from it, or Aurora still has the `default` security group |
+| Environment "Severe" or `502 Bad Gateway`, log shows `connection timeout` to the database | `portal-app-sg` isn't on the instance, or `portal-db-sg` doesn't allow 5432 from it, or Aurora has the `default` or `portal-app-sg` security group instead of `portal-db-sg` |
 | `password authentication failed` | `DB_USER` / `DB_PASSWORD` don't match the database user |
+| `password authentication failed for user "portal-app"` | A hyphen: the user is `portal_app`, with an underscore |
+| `password authentication failed` right after step 7c | `DB_PASSWORD` was saved with Source Plain text, so the app uses the ARN itself as the password: change its Source to SSM Parameter Store, and the same for `JWT_SECRET_KEY` |
+| `No such container: python` when running a `docker exec` command | It ran in CloudShell. Open a Session Manager shell on the Beanstalk instance and run it there |
+| The key pair can't be cleared in Beanstalk's configuration | The console has no empty choice: remove it with the command in [Lab 1, step 7a](lab-1-by-hand.md#step-7a-check-that-ssh-is-closed) |
 | `AccessDenied` from S3 | Instance profile isn't LabInstanceProfile, or `DOCS_BUCKET` is misspelled |
 | First deploy fails during `npm run build` | Not enough memory: use t3.medium, and check t3.micro isn't selected too |
 | Aurora creation fails mentioning a monitoring role | Enhanced Monitoring is on: turn it off |

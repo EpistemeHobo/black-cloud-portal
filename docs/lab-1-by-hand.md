@@ -132,7 +132,7 @@ Elastic Beanstalk → **Create application**. Fill in these sections:
 
 - Service role: **Use another role → LabRole**
 - EC2 instance profile: **Use another role → LabInstanceProfile**. This is what lets the app use S3 without keys.
-- EC2 key pair: **leave empty**. A key pair makes Beanstalk open SSH (port 22) to the whole internet. You get a shell through Session Manager instead, which needs no open port.
+- EC2 key pair: **leave empty**. A key pair makes Beanstalk open SSH (port 22) to the whole internet. You get a shell through Session Manager instead, which needs no open port. Don't select one even to try it: the console can't clear it afterwards (if you did, [step 7a](#step-7a-check-that-ssh-is-closed) removes it).
 - Tags: `Project = cloud-dev-portal`, `Environment = dev`. Not `Name`: Beanstalk reserves it.
 
 **Networking**
@@ -153,9 +153,9 @@ Elastic Beanstalk → **Create application**. Fill in these sections:
 
 Then **Create** (or **Submit**). The first launch takes about 10 minutes.
 
-**Checkpoint.** The environment shows **Green**, and its domain (`http://cloud-dev-portal.us-east-1.elasticbeanstalk.com`) opens the sign-in page. Green alone proves little: Basic health only checks that the instance is alive. Sign in with the seed admin.
+**Checkpoint.** The environment shows **Green**, and its domain (`http://cloud-dev-portal.us-east-1.elasticbeanstalk.com`) opens the sign-in page. Green alone proves little: Basic health only checks that the instance is alive. Sign in with the `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` you set in Environment properties.
 
-Then add one more property, so links in emails point to the portal: `PUBLIC_BASE_URL` = that address, starting with `http://`.
+Then add one more property, so links in emails point to the portal: `PUBLIC_BASE_URL` = that address, starting with `http://`. Do it before testing sign-up: without it, the links in emails start with `http://localhost:8000`.
 
 ## Step 6. Check it works
 
@@ -193,13 +193,19 @@ The portal works; now take away everything it doesn't need. Two principles:
 
 EC2 → **Security Groups** → the group whose name starts with `awseb-`: **Inbound rules** should show only **HTTP 80**.
 
-If you chose a key pair in step 5, there's a rule for port 22 open to `0.0.0.0/0`. Remove the key pair: Beanstalk → **Configuration** → **Service access** → **Edit** → EC2 key pair: none → **Apply**. Beanstalk replaces the instance and removes the rule.
+If you chose a key pair in step 5, there's a rule for port 22 open to `0.0.0.0/0`. Remove the key pair. The console's list has no empty choice, so use the command line (CloudShell, the `>_` icon in the console's top bar, needs no keys):
+
+```bash
+aws elasticbeanstalk update-environment --environment-name cloud-dev --options-to-remove Namespace=aws:autoscaling:launchconfiguration,OptionName=EC2KeyName --region us-east-1
+```
+
+Beanstalk replaces the instance (about 10 minutes; the data is in Aurora and S3) and removes the rule. Don't delete the rule in EC2 yourself: Beanstalk owns that group.
 
 **A shell without SSH:** EC2 → the instance → **Connect** → **Session Manager** → **Connect**. It goes through the Systems Manager agent on the instance (LabInstanceProfile allows it), with no open port and no key file to lose.
 
 ## Step 7b. The app's own database user
 
-The app signs in as `portal`, Aurora's master user, which may do anything to every database on the server. Give it a user that owns only its own database. Open a shell with Session Manager and run:
+The app signs in as `portal`, Aurora's master user, which may do anything to every database on the server. Give it a user that owns only its own database. Open a shell with Session Manager and run the command there. It must run on the Beanstalk instance, where the portal's container is: in CloudShell it fails with `No such container: python`.
 
 ```bash
 sudo docker exec $(sudo docker ps -q) python -m app.app_db_user --param /cloud-dev-portal/db-password
@@ -232,6 +238,11 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 | `DB_NAME` | Plain text | `portal` |
 | `DB_PASSWORD` | **SSM Parameter Store** | `arn:aws:ssm:us-east-1:<account id>:parameter/cloud-dev-portal/db-password` |
 | `JWT_SECRET_KEY` | **SSM Parameter Store** | `arn:aws:ssm:us-east-1:<account id>:parameter/cloud-dev-portal/jwt-secret-key` |
+
+Two easy slips here:
+
+- Change each row's **Source** dropdown before pasting the ARN. Left on Plain text, the app gets the ARN itself as the password, and the portal stops with `password authentication failed`.
+- `portal_app` has an **underscore**. `portal-app-sg`, with hyphens, is the security group. Copy it rather than typing it.
 
 Your account ID is the 12-digit number in the top-right account menu. Beanstalk reads the values on the instance at each deploy, through the instance profile, so they never appear in the configuration.
 
@@ -325,10 +336,11 @@ Systems Manager → **Parameter Store** → **Create parameter**:
 
 EventBridge works as the system's clock: a **rule** calls a target (the function) on a schedule, with a message you choose. No code: you fill in a form. You create two rules.
 
-**The idle check, every 15 minutes.** EventBridge → **Rules** → **Create rule**:
+**The idle check, every 15 minutes.** EventBridge → **Scheduler** → **Scheduled rules (legacy)** → **Create**:
 
-1. Name: **`cloud-dev-portal-tick`**. Event bus: default. Rule type: **Schedule**.
-   If the console suggests **EventBridge Scheduler**, choose **Continue in EventBridge rules** instead: Scheduler needs an IAM role of its own, which Learner Lab can't create, while a rule calls Lambda directly.
+Use **Scheduled rules (legacy)**, in the Scheduler group of the sidebar. The Rules page no longer offers a schedule (its builders only match events), and **Schedules** just above it is EventBridge Scheduler, a different service. Lab 2's CloudFormation template builds these same legacy rules.
+
+1. Name: **`cloud-dev-portal-tick`**. Event bus: default. Click **Next**.
 2. Schedule pattern: **A schedule that runs at a regular rate** → **15 minutes**.
 3. Target: **AWS service** → **Lambda function** → **`cloud-dev-portal-mode`**.
    - **Additional settings** → Configure target input: **Constant (JSON text)** → `{"action": "tick"}`
@@ -419,9 +431,9 @@ Until now the portal stores password hashes and needs an email service to confir
 2. Cognito sends the browser back to `/api/auth/callback` with a one-time code.
 3. The app swaps the code for an ID token, checks its signature and contents, and sets its usual session cookie. It doesn't keep the token.
 
-**Status of these steps:** the settings below were created through the API and tested against the real app. Only the Create user form has been used in the console, so other button names may differ.
+**Status of these steps:** on 14 November 2026 the whole part was rebuilt with the AWS CLI against the running portal, with the settings below, and the result checked: the portal's button opens Cognito's page, Cognito accepts the return address, and the old password route is closed. The console's screens weren't followed click by click, so a button name may differ.
 
-The app must be a version with Cognito sign-in. If you built your bundle before this part existed, repeat [Step 4](#step-4-build-the-app-bundle) and deploy it.
+The app must be a version with Cognito sign-in. Check it: open your Invoke URL + `/api/auth/config`. If the answer has no `"cognito"`, the running app is older than this part. Run `git archive -o portal.zip HEAD` again ([Step 4](#step-4-build-the-app-bundle); a `portal.zip` already in the folder may be an old one, and the command replaces it), then Beanstalk → your environment → **Upload and deploy**, with a new version label, and wait for it to finish.
 
 ## Step 14. User pool
 
@@ -436,11 +448,11 @@ Cognito → **User pools** → **Create user pool**.
 | Required attributes for sign-up | **name** | The portal shows it |
 | Return URL | your Invoke URL + `/api/auth/callback` | Cognito only sends people back to addresses listed here |
 
-Name the pool `cloud-dev-portal`. Then adjust it:
+The console names the pool itself, such as `User pool - h44xsu`. That's fine: the portal finds it by its ID. (Lab 2's stack names it `cloud-dev-portal`.) Then adjust it:
 
 1. **Sign-in → Password policy:** minimum length 12, with no character rules: length protects better than forcing symbols.
 2. **App clients → `portal` → Login pages → Edit:** add your Invoke URL + `/` as an **Allowed sign-out URL**. It must match exactly, including the `/`. OAuth grant type: **Authorization code grant**. Scopes: **OpenID**, **Email**, **Profile**.
-3. **Domain:** note the Cognito domain, in the form `https://<prefix>.auth.us-east-1.amazoncognito.com`. A prefix may not contain `aws`, `amazon` or `cognito`.
+3. **Domain:** the console has already made one. Open **Branding** → **Domain** and copy it, in the form `https://us-east-1abc123.auth.us-east-1.amazoncognito.com`. It becomes `COGNITO_DOMAIN` in step 16. If you make your own prefix instead, it may not contain `aws`, `amazon` or `cognito`.
 4. **Managed login → Styles:** optional. Match the portal's sign-in page by turning off the page's background image and using page colour `#090a11`, button colour `#1c1e22` and link colour `#0f172a`. The full list is under `SignInPages` in [infra/full-stack.yaml](../infra/full-stack.yaml). To get the portal's twinkling dots too, upload [infra/signin-background.svg](../infra/signin-background.svg) as the page background. A change can take a couple of minutes to appear.
 
 Wait about 2 minutes before opening that address. If you open it too early, your DNS server can remember that it doesn't exist; see [When something goes wrong](lab-common.md#when-something-goes-wrong).
@@ -458,7 +470,7 @@ User pool → **Users** → **Create user**:
 
 ## Step 16. Switch the app to Cognito
 
-Beanstalk → **Configuration → Updates, monitoring, and logging → Environment properties**:
+Beanstalk → **cloud-dev** → **Configuration** → **Environment Details** → **Edit** → **Environment properties**, as in step 7c. Add:
 
 | Name | Value |
 | --- | --- |
