@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0}svg{display:block}</style></head><body><svg xmlns="http://www.w3.org/2000/svg" width="1460" height="520" viewBox="0 0 1460 520" font-family="Arial, Helvetica, sans-serif">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#545B64"/></marker></defs>
+<rect width="1460" height="520" fill="#FFFFFF"/>
+<rect x="30" y="175" width="260" height="170" rx="14" fill="#FFFFFF" stroke="#D5DBDB" stroke-width="1.5"/>
+<g transform="translate(50,230.0) scale(0.8333)" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="72" height="72" rx="10" fill="#232F3E" stroke="none"/><circle cx="36" cy="27" r="10"/><path d="M18 57 C18 41 54 41 54 57"/></g>
+<text x="126" y="255.0" font-size="22" fill="#232F3E" font-weight="bold">Browser</text>
+<text x="126" y="281.0" font-size="18" fill="#545B64">Plain HTTP for now</text>
+<rect x="400" y="100" width="420" height="320" rx="14" fill="#FFFFFF" stroke="#D5DBDB" stroke-width="1.5"/>
+<g transform="translate(574,120) scale(1.0000)" stroke="#FFFFFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="72" height="72" rx="10" fill="#ED7100" stroke="none"/><path d="M36 58 V26"/><path d="M36 42 C24 42 17 35 17 24 C29 24 36 31 36 42"/><path d="M36 33 C48 33 55 26 55 15 C43 15 36 22 36 33"/></g>
+<text x="610" y="228" font-size="24" fill="#232F3E" font-weight="bold" text-anchor="middle">Elastic Beanstalk</text>
+<text x="610" y="256" font-size="18" fill="#545B64" text-anchor="middle">Docker, one instance</text>
+<rect x="420" y="280" width="380" height="120" rx="10" fill="#FFF4E8" stroke="#ED7100" stroke-dasharray="4 3"/>
+<g transform="translate(438,308) scale(0.8889)" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="72" height="72" rx="10" fill="#ED7100" stroke="none"/><rect x="24" y="24" width="24" height="24" rx="2"/><path d="M30 15 V24 M36 15 V24 M42 15 V24 M30 48 V57 M36 48 V57 M42 48 V57 M15 30 H24 M15 36 H24 M15 42 H24 M48 30 H57 M48 36 H57 M48 42 H57"/></g>
+<text x="520" y="336" font-size="20" fill="#232F3E" font-weight="bold">EC2: the portal container</text>
+<text x="520" y="362" font-size="18" fill="#545B64">portal-app-sg</text>
+<rect x="1100" y="30" width="330" height="190" rx="14" fill="#FFFFFF" stroke="#D5DBDB" stroke-width="1.5"/>
+<g transform="translate(1120,95.0) scale(0.8333)" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="72" height="72" rx="10" fill="#C925D1" stroke="none"/><ellipse cx="36" cy="20" rx="17" ry="6"/><path d="M19 20 V52 C19 60 53 60 53 52 V20"/><path d="M19 31 C19 39 53 39 53 31 M19 42 C19 50 53 50 53 42"/></g>
+<text x="1196" y="98.0" font-size="22" fill="#232F3E" font-weight="bold">Aurora</text>
+<text x="1196" y="124.0" font-size="18" fill="#545B64">PostgreSQL</text>
+<text x="1196" y="148.0" font-size="18" fill="#545B64">portal-db-sg: 5432</text>
+<text x="1196" y="172.0" font-size="18" fill="#545B64">from the app only</text>
+<rect x="1100" y="300" width="330" height="190" rx="14" fill="#FFFFFF" stroke="#D5DBDB" stroke-width="1.5"/>
+<g transform="translate(1120,365.0) scale(0.8333)" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="72" height="72" rx="10" fill="#7AA116" stroke="none"/><ellipse cx="36" cy="23" rx="18" ry="6"/><path d="M18 23 L23 53 C25 58 47 58 49 53 L54 23"/></g>
+<text x="1196" y="379.0" font-size="22" fill="#232F3E" font-weight="bold">Amazon S3</text>
+<text x="1196" y="405.0" font-size="18" fill="#545B64">Guide markdown files,</text>
+<text x="1196" y="429.0" font-size="18" fill="#545B64">versioned</text>
+<path d="M290 260 H398" fill="none" stroke="#545B64" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="315" y="228" width="58" height="30" rx="5" fill="#FFFFFF"/>
+<text x="344" y="248" font-size="20" fill="#545B64" font-style="italic" text-anchor="middle">HTTP</text>
+<path d="M820 200 H900 V125 H1098" fill="none" stroke="#545B64" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="908" y="93" width="151" height="30" rx="5" fill="#FFFFFF"/>
+<text x="916" y="113" font-size="20" fill="#545B64" font-style="italic">5432, private</text>
+<path d="M820 340 H900 V395 H1098" fill="none" stroke="#545B64" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="908" y="363" width="203" height="30" rx="5" fill="#FFFFFF"/>
+<text x="916" y="383" font-size="20" fill="#545B64" font-style="italic">LabInstanceProfile</text>
+</svg>
+</body></html>

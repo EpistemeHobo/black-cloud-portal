@@ -29,15 +29,24 @@ export default function HistoryTab({ system }: { system: SystemDetail }) {
     deploy_steps: "ขั้นตอนติดตั้ง", rollback_steps: "ขั้นตอนย้อนกลับ", guide_nothing: "คำถามที่ไม่มีรายการ",
     text: "ข้อความ", kind: "ประเภท", how_often: "ความถี่", next_due: "ครั้งถัดไป", promised_to: "สัญญากับ",
     due_date: "ภายในวันที่", done_at: "ทำเสร็จ", reachable_until: "ติดต่อได้ถึง", note: "หมายเหตุ",
+    title: "ชื่อรายการ", reason: "เหตุผลที่เลือก", impact: "ผลถ้าปล่อยไว้", fix_plan: "วิธีแก้", risk: "ความเสี่ยง",
+    effort: "แรงที่ต้องใช้", target_date: "กำหนดแก้", issue_url: "ลิงก์ issue",
+  };
+  // Secret box and leak alert events: a box's name, never what is in it.
+  const secretActions: Record<string, string> = {
+    box_created: "สร้างกล่องรหัสลับ", box_version_added: "บันทึกกล่องรหัสลับ", box_key_changed: "เปลี่ยนกุญแจกล่องรหัสลับ",
+    box_renamed: "เปลี่ยนชื่อกล่องรหัสลับ", box_opened: "เปิดกล่องรหัสลับ", box_deleted: "ลบกล่องรหัสลับ",
+    alert_resolved: "ปิดการแจ้งเตือนรหัสลับรั่วไหล", alert_reopened: "เปิดการแจ้งเตือนรหัสลับอีกครั้ง",
   };
   const actions: Record<string, string> = { added: "เพิ่ม", removed: "ลบ", replaced: "แทนที่" };
   const fieldName = (f: string) => fieldLabels[f] ?? coreFields[f] ?? f.replaceAll("_", " ");
   const what = (r: HistoryRow) => {
     if (r.entity === "system") return r.field === "created" ? "ลงทะเบียนระบบ" : fieldName(r.field);
     if (r.entity === "checklist") return `รายการตรวจสอบ ${r.entity_id}: ${fieldName(r.field)}`;
+    if (r.entity === "secret") return `${secretActions[r.field] ?? r.field}${r.entity_id ? ` ${r.entity_id}` : ""}`;
     const entity: Record<string, string> = {
       role: "บทบาท", link: "ลิงก์", dependency: "ระบบที่พึ่งพา", review: "บันทึกการทบทวน",
-      watch_out: "ข้อควรระวัง/งานประจำ", open_item: "งานค้าง", guide_doc: "ไฟล์แนบ .md",
+      watch_out: "ข้อควรระวัง/งานประจำ", open_item: "งานค้าง", guide_doc: "ไฟล์แนบ .md", tech_debt: "หนี้ทางเทคนิค",
     };
     if (!actions[r.field]) return `${entity[r.entity] ?? r.entity}: ${fieldName(r.field)}`;
     return `${actions[r.field] ?? fieldName(r.field)}${entity[r.entity] ?? r.entity}`;

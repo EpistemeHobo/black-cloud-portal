@@ -11,18 +11,24 @@ import ChecklistTab from "@/components/system/ChecklistTab";
 import DeleteSystem from "@/components/system/DeleteSystem";
 import DetailsTab from "@/components/system/DetailsTab";
 import HistoryTab from "@/components/system/HistoryTab";
+import SecurityTab from "@/components/system/SecurityTab";
+import TechDebtTab from "@/components/system/TechDebtTab";
 import StepTracker from "@/components/system/StepTracker";
 import VerifySystem from "@/components/system/VerifySystem";
 import { api, API_BASE, ApiError, formatDate } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { SystemDetail } from "@/lib/types";
 
+// Tabs by key, so a link can open one: /system/?id=APP-001&tab=security (the leak alert email).
+type TabKey = "guide" | "catalog" | "checklist" | "debt" | "security" | "history";
+
 function SystemPage() {
-  const id = useSearchParams().get("id") ?? "";
+  const params = useSearchParams();
+  const id = params.get("id") ?? "";
   const { label, notify } = useSession();
   const [system, setSystem] = useState<SystemDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState<TabKey>((params.get("tab") as TabKey | null) ?? "guide");
 
   const load = useCallback(() => {
     if (!id) return;
@@ -47,6 +53,9 @@ function SystemPage() {
   if (!system) return <p className="text-slate-500">กำลังโหลด…</p>;
 
   const owner = system.roles.find((r) => r.role === "technical_owner");
+  const sec = system.security;
+  const tabs: TabKey[] = ["guide", "catalog", "checklist", "debt", ...(sec.can_list ? ["security" as const] : []), "history"];
+  const index = Math.max(0, tabs.indexOf(tab));
 
   return (
     <div className="space-y-4">
@@ -85,7 +94,7 @@ function SystemPage() {
         </div>
       </div>
 
-      <TabView activeIndex={tab} onTabChange={(e) => setTab(e.index)} className="site-tabs rounded-lg" panelContainerClassName="!bg-transparent !px-0">
+      <TabView activeIndex={index} onTabChange={(e) => setTab(tabs[e.index])} className="site-tabs rounded-lg" panelContainerClassName="!bg-transparent !px-0">
         <TabPanel header="คู่มือรับช่วงต่อ">
           <HandoverGuide system={system} onChange={setSystem} />
         </TabPanel>
@@ -102,6 +111,33 @@ function SystemPage() {
             <ChecklistTab system={system} onProgress={load} />
           </div>
         </TabPanel>
+        <TabPanel header={
+          <span className="flex items-center gap-2">
+            หนี้ทางเทคนิค
+            {system.tech_debt.open > 0 && (
+              <span className={`rounded-full px-2 text-xs font-semibold ${system.tech_debt.overdue > 0 ? "bg-rose-100 text-rose-800" : "bg-slate-200 text-slate-700"}`}>
+                {system.tech_debt.open}
+              </span>
+            )}
+          </span>
+        }>
+          <TechDebtTab system={system} onCount={load} />
+        </TabPanel>
+        {sec.can_list && (
+          <TabPanel header={
+            <span className="flex items-center gap-2">
+              <i className="pi pi-lock text-xs" aria-hidden />
+              รหัสลับและความปลอดภัย
+              {sec.open_alerts > 0 && (
+                <span className="rounded-full bg-rose-600 px-2 text-xs font-semibold text-white" aria-label={`${sec.open_alerts} การแจ้งเตือน`}>
+                  {sec.open_alerts}
+                </span>
+              )}
+            </span>
+          }>
+            <SecurityTab system={system} onChange={load} />
+          </TabPanel>
+        )}
         <TabPanel header="ประวัติการแก้ไข">
           <HistoryTab system={system} />
         </TabPanel>

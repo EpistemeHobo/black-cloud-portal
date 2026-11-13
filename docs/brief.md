@@ -29,6 +29,9 @@ Cloud has no single place that lists its apps and systems, who owns them, and ho
 10. Users can see what a system depends on and what depends on it.
 11. Users can see who changed what on a system, and when.
 12. Admins can change the checklist items without a code change.
+13. Owners can record their system's technical debt (what, why, impact, plan, risk, target date), and anyone can see it across systems.
+14. A system's people can keep a second copy of its secrets in encrypted, versioned boxes, opened with keys they hold and pass on to whoever takes over, instead of in its pages.
+15. The portal warns before saving text that looks like a secret, alerts the system's people about every leak it finds (on save and on a schedule), and hides leaked text from everyone else.
 
 ## Out of scope
 

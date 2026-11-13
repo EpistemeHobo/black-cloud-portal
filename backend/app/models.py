@@ -176,6 +176,15 @@ class System(Base):
     docs: Mapped[list["GuideDoc"]] = relationship(
         back_populates="system", cascade="all, delete-orphan", order_by="GuideDoc.filename"
     )
+    tech_debts: Mapped[list["TechDebt"]] = relationship(
+        back_populates="system", cascade="all, delete-orphan", order_by="TechDebt.id"
+    )
+    secret_boxes: Mapped[list["SecretBox"]] = relationship(
+        back_populates="system", cascade="all, delete-orphan", order_by="SecretBox.name"
+    )
+    secret_alerts: Mapped[list["SecretAlert"]] = relationship(
+        back_populates="system", cascade="all, delete-orphan", order_by="SecretAlert.id"
+    )
 
 
 class SystemRole(Base):
@@ -342,3 +351,140 @@ class ActivityLog(Base):
     subject_email: Mapped[Optional[str]] = mapped_column(String(320))
     detail: Mapped[Optional[str]] = mapped_column(Text)
     ip: Mapped[Optional[str]] = mapped_column(String(64))
+
+
+class TechDebt(Base):
+    """A shortcut taken on purpose, with the plan to fix it (docs/technical_debt.md's fields)."""
+    __tablename__ = "tech_debt"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    system_id: Mapped[str] = mapped_column(ForeignKey("system.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    # What it is, why we took it on, what happens if we leave it, how to fix it.
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    reason: Mapped[Optional[str]] = mapped_column(Text)
+    impact: Mapped[Optional[str]] = mapped_column(Text)
+    fix_plan: Mapped[Optional[str]] = mapped_column(Text)
+    risk: Mapped[str] = mapped_column(String(10), default="Medium")
+    effort: Mapped[Optional[str]] = mapped_column(String(50))
+    target_date: Mapped[Optional[date]] = mapped_column(Date)
+    issue_url: Mapped[Optional[str]] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    system: Mapped[System] = relationship(back_populates="tech_debts")
+    created_by: Mapped[Optional[Person]] = relationship()
+
+
+class SecretBox(Base):
+    """An encrypted box of a system's secrets, such as its production .env (vault.py).
+
+    The browser encrypts the contents with a key the box's creator generates there
+    and keeps themself; the portal never receives it. The server holds only
+    ciphertext, a key check that tells a wrong key from a right one, and the first
+    characters of the key's SHA-256 so people can tell their keys apart.
+    """
+    __tablename__ = "secret_box"
+    __table_args__ = (UniqueConstraint("system_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Made in the browser before the box exists; every ciphertext is bound to it.
+    uid: Mapped[str] = mapped_column(String(36), unique=True)
+    system_id: Mapped[str] = mapped_column(ForeignKey("system.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[Optional[str]] = mapped_column(String(500))
+    key_id: Mapped[str] = mapped_column(String(16))
+    key_check: Mapped[str] = mapped_column(String(200))
+    key_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    current_version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    # Reported by the browser after it opened the box with the right key.
+    last_opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_opened_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
+
+    system: Mapped[System] = relationship(back_populates="secret_boxes")
+    versions: Mapped[list["SecretBoxVersion"]] = relationship(
+        back_populates="box", cascade="all, delete-orphan", order_by="SecretBoxVersion.version"
+    )
+    created_by: Mapped[Optional[Person]] = relationship(foreign_keys=[created_by_id])
+    last_opened_by: Mapped[Optional[Person]] = relationship(foreign_keys=[last_opened_by_id])
+
+
+class SecretBoxVersion(Base):
+    """One saved state of a box's contents. Saving makes a new version; old ones stay."""
+    __tablename__ = "secret_box_version"
+    __table_args__ = (UniqueConstraint("box_id", "version"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    box_id: Mapped[int] = mapped_column(ForeignKey("secret_box.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    # Base64 of the 12-byte IV followed by the AES-256-GCM ciphertext and tag. Loaded
+    # only when asked for, so listing versions doesn't pull every ciphertext.
+    ciphertext: Mapped[str] = mapped_column(Text, deferred=True)
+    # In clear, like a commit message: what changed, never a value.
+    note: Mapped[Optional[str]] = mapped_column(String(300))
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    box: Mapped[SecretBox] = relationship(back_populates="versions")
+    created_by: Mapped[Optional[Person]] = relationship()
+
+
+class SecretAlert(Base):
+    """Something that looks like a secret, found in a system's text (leak_scan.py).
+
+    The secret itself is never stored: only a keyed fingerprint, to recognise it
+    again, and a masked preview. One row per secret and place it was found.
+    """
+    __tablename__ = "secret_alert"
+    __table_args__ = (UniqueConstraint("system_id", "location_kind", "location_key", "fingerprint"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    system_id: Mapped[str] = mapped_column(ForeignKey("system.id", ondelete="CASCADE"), index=True)
+    rule: Mapped[str] = mapped_column(String(40))
+    severity: Mapped[str] = mapped_column(String(10))
+    # Where: a kind (field, doc, watch_out...), its key (field name, row id), a label to show.
+    location_kind: Mapped[str] = mapped_column(String(20))
+    location_key: Mapped[str] = mapped_column(String(100))
+    location_label: Mapped[str] = mapped_column(String(300))
+    line: Mapped[Optional[int]] = mapped_column(Integer)
+    preview: Mapped[str] = mapped_column(String(60))
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    # "open" until an owner closes it ("resolved") with one of enums.ALERT_RESOLUTIONS.
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    resolution: Mapped[Optional[str]] = mapped_column(String(20))
+    resolution_note: Mapped[Optional[str]] = mapped_column(String(500))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    resolved_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("person.id"))
+    # False once a scan no longer finds it there (edited out). It stays exposed in
+    # the change history and in anyone's copy, so the alert stays open until closed.
+    still_present: Mapped[bool] = mapped_column(Boolean, default=True)
+    # How it was first found: "save" (a change as it was saved), "scheduled", "manual" or "cli".
+    source: Mapped[str] = mapped_column(String(20))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    notified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    system: Mapped[System] = relationship(back_populates="secret_alerts")
+    resolved_by: Mapped[Optional[Person]] = relationship()
+
+
+class SecretScanRun(Base):
+    """One scan of every system for leaked secrets: scheduled, started by an admin, or the CLI."""
+    __tablename__ = "secret_scan_run"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trigger: Mapped[str] = mapped_column(String(20))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    systems_scanned: Mapped[int] = mapped_column(Integer, default=0)
+    texts_scanned: Mapped[int] = mapped_column(Integer, default=0)
+    findings: Mapped[int] = mapped_column(Integer, default=0)
+    new_alerts: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    started_by_email: Mapped[Optional[str]] = mapped_column(String(320))

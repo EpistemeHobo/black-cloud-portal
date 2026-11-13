@@ -15,7 +15,8 @@ from app.enums import (
 from app.fields import FIELDS, GUIDE_FIELDS, RESTRICTED_FIELDS
 from app.guide import answered_count, guide_status
 from app.models import (
-    ChangeLog, ChecklistItem, Dependency, GuideDoc, OpenItem, Person, StandardsVersion, System, SystemRole, Unit,
+    ChangeLog, ChecklistItem, Dependency, GuideDoc, OpenItem, Person, SecretBox, StandardsVersion, System, SystemRole,
+    Unit,
 )
 
 _LOAD = (
@@ -27,6 +28,9 @@ _LOAD = (
     selectinload(System.watch_outs),
     selectinload(System.open_items).selectinload(OpenItem.done_by),
     selectinload(System.docs).selectinload(GuideDoc.updated_by),
+    selectinload(System.tech_debts),
+    selectinload(System.secret_boxes).selectinload(SecretBox.versions),
+    selectinload(System.secret_alerts),
 )
 
 # Editable by owners, developers and auditors alike.
@@ -132,14 +136,33 @@ def summary(db: Session, system: System, items: list[ChecklistItem]) -> dict:
     }
 
 
+def security_summary(viewer: Person, system: System) -> dict:
+    """What the system page shows about its secret boxes and leak alerts, to whoever may see them."""
+    from app import vault
+    from app.enums import ALERT_SEVERITIES
+
+    if not vault.can_list(viewer, system):
+        return {"can_list": False, "can_use": False}
+    open_alerts = [a for a in system.secret_alerts if a.status == "open"]
+    worst = min((a.severity for a in open_alerts), key=lambda s: list(ALERT_SEVERITIES).index(s), default=None)
+    return {"can_list": True, "can_use": vault.can_use(viewer, system),
+            "boxes": len(system.secret_boxes), "open_alerts": len(open_alerts), "worst_severity": worst}
+
+
 def detail(db: Session, system: System, viewer: Person) -> dict:
+    from app import leak_scan
+    from app.routers.debt import summary as debt_summary
+
     editable = can_edit(viewer, system)
     restricted_visible = editable or viewer.is_auditor
+    # Text that looks like a secret is masked for anyone who isn't one of the system's people.
+    show = leak_scan.redactor(viewer, system)
     fields = {}
     for key in FIELDS:
         if key in RESTRICTED_FIELDS and not restricted_visible:
             continue
-        fields[key] = _value(getattr(system, key))
+        value = _value(getattr(system, key))
+        fields[key] = show(value) if isinstance(value, str) else value
     used_by = db.scalars(
         select(Dependency).where(Dependency.to_system_id == system.id)
         .options(selectinload(Dependency.from_system))
@@ -153,37 +176,37 @@ def detail(db: Session, system: System, viewer: Person) -> dict:
         "step_name": STEPS[system.step],
         "lifecycle_state": system.lifecycle_state,
         "owning_unit": {"id": system.owning_unit.id, "name": system.owning_unit.name} if system.owning_unit else None,
-        "guide_fields": {key: getattr(system, key) for key in GUIDE_FIELDS},
+        "guide_fields": {key: show(getattr(system, key)) for key in GUIDE_FIELDS},
         "guide": guide_status(db, system),
         "fields": fields,
         "hidden_fields": [] if restricted_visible else sorted(RESTRICTED_FIELDS),
         "roles": [
             {"role": r.role, "role_label": ROLES[r.role], "person": _person(r.person),
-             "reachable_until": _value(r.reachable_until), "note": r.note,
+             "reachable_until": _value(r.reachable_until), "note": show(r.note),
              "reachable": r.reachable_until is None or r.reachable_until >= date.today()}
             for r in sorted(system.roles, key=lambda r: list(ROLES).index(r.role))
         ],
         "watch_outs": [
-            {"id": w.id, "kind": w.kind, "text": w.text, "how_often": w.how_often, "next_due": _value(w.next_due)}
+            {"id": w.id, "kind": w.kind, "text": show(w.text), "how_often": w.how_often, "next_due": _value(w.next_due)}
             for w in system.watch_outs
         ],
         "docs": [
-            {"id": d.id, "question": d.question, "filename": d.filename, "content": doc_store.read(d),
+            {"id": d.id, "question": d.question, "filename": d.filename, "content": show(doc_store.read(d)),
              "updated_at": d.updated_at.isoformat() if d.updated_at else None,
              "updated_by": d.updated_by.name if d.updated_by else None}
             for d in system.docs
         ],
         "open_items": [
-            {"id": o.id, "kind": o.kind, "text": o.text, "promised_to": o.promised_to,
+            {"id": o.id, "kind": o.kind, "text": show(o.text), "promised_to": show(o.promised_to),
              "due_date": _value(o.due_date), "done": o.done_at is not None,
              "done_at": o.done_at.isoformat() if o.done_at else None,
              "done_by": o.done_by.name if o.done_by else None}
             for o in system.open_items
         ],
-        "links": [{"id": l.id, "kind": l.kind, "url": l.url, "label": l.label} for l in system.links],
+        "links": [{"id": l.id, "kind": l.kind, "url": show(l.url), "label": show(l.label)} for l in system.links],
         "depends_on": [
-            {"to_system_id": d.to_system_id, "name": d.to_system.name if d.to_system else d.external_name,
-             "external": d.to_system_id is None, "note": d.note}
+            {"to_system_id": d.to_system_id, "name": d.to_system.name if d.to_system else show(d.external_name),
+             "external": d.to_system_id is None, "note": show(d.note)}
             for d in system.dependencies
         ],
         "used_by": [
@@ -198,6 +221,8 @@ def detail(db: Session, system: System, viewer: Person) -> dict:
         "can_edit": editable,
         "can_edit_catalog": can_edit_catalog(viewer, system),
         "can_delete": can_delete(viewer, system),
+        "tech_debt": debt_summary(system),
+        "security": security_summary(viewer, system),
     }
 
 
@@ -235,6 +260,8 @@ def _clean_value(key: str, value: Any) -> Any:
 
 
 def apply_patch(db: Session, system: System, data: dict) -> None:
+    from app.leak_guard import keep_hidden_text
+
     for key, value in data.items():
         if key == "name":
             if not isinstance(value, str) or not value.strip():
@@ -257,6 +284,7 @@ def apply_patch(db: Session, system: System, data: dict) -> None:
             if value is not None and not isinstance(value, str):
                 raise HTTPException(status_code=422, detail=f"{spec['label']} ต้องเป็นข้อความ")
             value = (value or "").strip()
+            keep_hidden_text(getattr(system, key), value, spec["label"])
             if len(value) > spec["max"]:
                 raise HTTPException(status_code=422, detail=f"{spec['label']} ยาวเกินไป")
             setattr(system, key, value or None)
@@ -265,7 +293,10 @@ def apply_patch(db: Session, system: System, data: dict) -> None:
                 raise HTTPException(status_code=422, detail="ทำเครื่องหมาย 'ไม่มีรายการ' ได้เฉพาะบางคำถาม")
             system.guide_nothing = sorted(set(value)) or None
         elif key in FIELDS:
-            setattr(system, key, _clean_value(key, value))
+            cleaned = _clean_value(key, value)
+            if isinstance(cleaned, str):
+                keep_hidden_text(getattr(system, key), cleaned, FIELDS[key]["label"])
+            setattr(system, key, cleaned)
         else:
             raise HTTPException(status_code=422, detail=f"'{key}' แก้ไขที่นี่ไม่ได้")
 

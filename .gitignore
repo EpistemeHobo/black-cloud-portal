@@ -29,3 +29,11 @@ Thumbs.db
 
 # Import files describing real systems: never in this public repository
 imports/
+
+# Personal Office documents (the Word lab, notes, backups) and Office's lock and temp files
+*.docx
+*.doc
+*.xlsx
+*.pptx
+~$*
+~WRL*.tmp

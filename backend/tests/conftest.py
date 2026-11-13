@@ -10,6 +10,7 @@ os.environ["ENVIRONMENT"] = "test"
 os.environ["PASSWORD_ITERATIONS"] = "1000"  # fast hashing for tests
 os.environ["KB_BASE_URL"] = "https://kb.example.org"
 os.environ["FRONTEND_DIR"] = str(_TMP / "no-frontend")
+os.environ["SECRET_SCAN_INTERVAL_HOURS"] = "0"  # scans run only where a test asks
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402

@@ -109,12 +109,12 @@ class Svg:
         if step:
             self.number(x + w - 22 - 4.5 * len(step), y, step)
 
-    def render(self) -> str:
-        return ('<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" '
-                'font-family="Arial, Helvetica, sans-serif">\n'
+    def render(self, width=1920, height=1080) -> str:
+        return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+                f'viewBox="0 0 {width} {height}" font-family="Arial, Helvetica, sans-serif">\n'
                 '<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
                 f'orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="{GREY}"/></marker></defs>\n'
-                '<rect width="1920" height="1080" fill="#FFFFFF"/>\n' + "\n".join(self.parts) + "\n</svg>\n")
+                f'<rect width="{width}" height="{height}" fill="#FFFFFF"/>\n' + "\n".join(self.parts) + "\n</svg>\n")
 
 
 # Card positions, the same in both diagrams.

@@ -24,6 +24,10 @@ export type Meta = {
   chore_frequencies: KeyLabel[];
   open_item_kinds: KeyLabel[];
   sections: Section[];
+  debt_risks: string[];
+  debt_statuses: KeyLabel[];
+  alert_resolutions: KeyLabel[];
+  alert_severities: KeyLabel[];
   kb_base_url: string | null;
   /** Stored English values (system types, states, choices…) to Thai display labels. */
   choice_labels: Record<string, string>;
@@ -132,6 +136,94 @@ export type SystemDetail = {
   can_edit_catalog: boolean;
   /** Technical owners and admins only. */
   can_delete: boolean;
+  tech_debt: DebtSummary;
+  /** Secret boxes and leak alerts: only for the system's people (and, without contents, admins). */
+  security: SecuritySummary;
+};
+
+export type DebtSummary = { open: number; high_open: number; overdue: number };
+
+export type SecuritySummary =
+  | { can_list: false; can_use: false }
+  | {
+      can_list: true;
+      can_use: boolean;
+      boxes: number;
+      open_alerts: number;
+      worst_severity: Severity | null;
+    };
+
+export type Severity = "critical" | "high" | "medium";
+
+export type TechDebt = {
+  id: number;
+  title: string;
+  description: string | null;
+  reason: string | null;
+  impact: string | null;
+  fix_plan: string | null;
+  risk: "High" | "Medium" | "Low";
+  effort: string | null;
+  target_date: string | null;
+  issue_url: string | null;
+  status: "open" | "in_progress" | "paid_off" | "wont_fix";
+  overdue: boolean;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  closed_at: string | null;
+};
+
+export type TechDebtList = { items: TechDebt[]; summary: DebtSummary; can_edit: boolean };
+
+/** An encrypted box of secrets. The portal holds only ciphertext; the key stays with people. */
+export type SecretBox = {
+  id: number;
+  uid: string;
+  name: string;
+  description: string | null;
+  key_id: string;
+  key_check: string;
+  key_changed_at: string | null;
+  current_version: number;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  last_opened_at: string | null;
+  last_opened_by: string | null;
+  /** People taken off the system since the key changed: they may still hold it. */
+  left_since_key_change: string[];
+};
+
+export type SecretBoxes = {
+  can_use: boolean;
+  items: SecretBox[];
+  access: { name: string; email: string; roles: string[] }[];
+};
+
+export type BoxVersion = { version: number; note: string | null; created_by: string | null; created_at: string | null };
+
+export type SecretAlert = {
+  id: number;
+  system_id: string;
+  system_name?: string;
+  rule: string;
+  rule_label: string;
+  severity: Severity;
+  location_kind: string;
+  location_key: string;
+  location_label: string;
+  line: number | null;
+  preview: string;
+  status: "open" | "resolved";
+  resolution: string | null;
+  resolution_note: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  still_present: boolean;
+  source: string;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
 };
 
 export type ChecklistRow = {

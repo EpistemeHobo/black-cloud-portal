@@ -126,3 +126,12 @@ ORIGIN_VERIFY_SECRET = os.environ.get("ORIGIN_VERIFY_SECRET", "")
 DOCS_BUCKET = os.environ.get("DOCS_BUCKET", "").strip()
 DOCS_PREFIX = os.environ.get("DOCS_PREFIX", "").strip().strip("/")
 AWS_REGION = (os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1").strip()
+
+# Whether the session key above came from the settings (stable across restarts) or was
+# made up at start-up. The leak scanner keys its fingerprints from it only when stable.
+JWT_SECRET_FROM_SETTINGS = bool(os.environ.get("JWT_SECRET_KEY", ""))
+
+# Every system is scanned for leaked secrets this often (leak_scan.py), besides the
+# scan of each change as it is saved. 0 turns the scheduled scan off (the tests;
+# or when a cron job runs `python -m app.leak_scan` instead).
+SECRET_SCAN_INTERVAL_HOURS = float(os.environ.get("SECRET_SCAN_INTERVAL_HOURS", "24"))

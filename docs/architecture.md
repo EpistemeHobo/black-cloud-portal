@@ -1,6 +1,6 @@
 # Architecture: Cloud Internal Developer Portal
 
-*Last updated: 2026-10-29*
+*Last updated: 2026-11-11*
 
 ## Overview
 
@@ -41,6 +41,8 @@ flowchart LR
 | Web frontend | Next.js (static export), React, PrimeReact, Tailwind | Catalog, system pages, forms and checklists |
 | API / backend | Python 3.11, FastAPI, SQLAlchemy | Data, permissions, checklist rules, change history |
 | Database migrations | Alembic | Creates and changes tables on every deploy |
+| Secret boxes | Web Crypto (AES-256-GCM) in `frontend/src/lib/boxCrypto.ts`; `vault.py` | Encrypts each box in the browser with a key the portal never receives; the server keeps ciphertext and decides who may download it |
+| Leak scanner | `leak_scan.py`, `leak_guard.py` | Checks every save, scans everything on a schedule, masks leaks for non-members; `python -m app.leak_scan` from cron |
 | Database | SQLite locally; Aurora PostgreSQL on AWS (`DB_HOST` or `DATABASE_URL`) | All portal data except attached files |
 | File storage | S3 (`DOCS_BUCKET`), versioned; the database when unset | Markdown files attached to the handover guide |
 
@@ -54,6 +56,9 @@ The data model is in [data-model.md](data-model.md).
 | Systems and their details | `system` and related tables | Some fields confidential (see below) | Yes, nightly |
 | Checklist answers, review notes | `checklist_answer`, `review_note` tables | No | Yes, nightly |
 | Attached markdown files (runbooks) | S3 objects `systems/<id>/<question>/<file>`; the `guide_doc` row keeps key and checksum | May describe servers; bucket is private | S3 versioning keeps old copies |
+| Technical debt | `tech_debt` table | No | Yes, nightly |
+| Secret boxes | `secret_box`, `secret_box_version` tables: ciphertext only; the keys stay with people | Confidential: passwords, keys, tokens | With the database, but unreadable without each box's key; owners keep the originals elsewhere |
+| Leak alerts and scan runs | `secret_alert`, `secret_scan_run` tables: a fingerprint and masked preview, never the secret | Says where a secret leaked | Yes, nightly |
 | Change history | `change_log` table | Contains names of who changed what | Yes, nightly |
 
 ## Login and permissions
@@ -65,6 +70,8 @@ The data model is in [data-model.md](data-model.md).
 - A system's owners and developers can edit it. Admins can edit everything and manage checklist items.
 - Confidential fields (server or location, data storage location, backup details, known vulnerabilities) are shown only to the system's owners, developers and admins.
 - Any signed-in user can add a review note.
+- **Secrets** (decision 0009): each system's secret boxes are encrypted in the browser with keys the portal never receives; only its owners, backup owner and developers may download them, and they also need the box's key. Admins see names and history, not contents. Every save is checked for things that look like secrets: a new serious one is refused until the person confirms, and every one becomes an alert for the system's people, who are emailed. All systems, attached files included, are scanned again every `SECRET_SCAN_INTERVAL_HOURS`. Text that looks like a secret is masked for everyone outside the system until its alert is closed as not a secret.
+- **Technical debt**: every signed-in user can read every system's debt (a tab on the system page, and the หนี้ทางเทคนิค page across systems); the system's editors keep it.
 - The first admin comes from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`, or with Cognito from `SEED_ADMIN_EMAIL` plus a Cognito user with that email. Without SMTP settings (local development), emails are written to the server log.
 
 ## Connections to other systems
